@@ -1,0 +1,558 @@
+2026-04-14 07:01:49 pid:45991 Workerman[server.php] start in DEBUG mode
+2026-04-14 07:10:17 pid:55385 Workerman[server.php] status 
+2026-04-14 07:10:34 pid:55754 Workerman[server.php] stop 
+2026-04-14 07:10:34 pid:55754 Workerman[server.php] is stopping ...
+2026-04-14 07:10:34 pid:45991 Workerman[server.php] stopping ...
+2026-04-14 07:10:35 pid:45991 Workerman[server.php] has been stopped
+2026-04-14 07:10:36 pid:55754 Workerman[server.php] stop success
+2026-04-14 07:10:40 pid:55842 Workerman[server.php] start in DEBUG mode
+2026-04-14 07:11:29 pid:55843 TypeError: {closure}(): Argument #1 ($connection) must be of type TcpConnection, Workerman\Connection\TcpConnection given, called in /var/www/socketio/vendor/workerman/workerman/Connection/TcpConnection.php on line 653 and defined in /var/www/socketio/server.php:14
+Stack trace:
+#0 /var/www/socketio/vendor/workerman/workerman/Connection/TcpConnection.php(653): {closure}()
+#1 /var/www/socketio/vendor/workerman/workerman/Events/Select.php(311): Workerman\Connection\TcpConnection->baseRead()
+#2 /var/www/socketio/vendor/workerman/workerman/Worker.php(1719): Workerman\Events\Select->loop()
+#3 /var/www/socketio/vendor/workerman/workerman/Worker.php(1510): Workerman\Worker::forkOneWorkerForLinux()
+#4 /var/www/socketio/vendor/workerman/workerman/Worker.php(1484): Workerman\Worker::forkWorkersForLinux()
+#5 /var/www/socketio/vendor/workerman/workerman/Worker.php(561): Workerman\Worker::forkWorkers()
+#6 /var/www/socketio/server.php(94): Workerman\Worker::runAll()
+#7 {main}
+2026-04-14 07:11:29 pid:55842 worker[none:55843] exit with status 64000
+2026-04-14 07:11:30 pid:56682 TypeError: {closure}(): Argument #1 ($connection) must be of type TcpConnection, Workerman\Connection\TcpConnection given, called in /var/www/socketio/vendor/workerman/workerman/Connection/TcpConnection.php on line 653 and defined in /var/www/socketio/server.php:14
+Stack trace:
+#0 /var/www/socketio/vendor/workerman/workerman/Connection/TcpConnection.php(653): {closure}()
+#1 /var/www/socketio/vendor/workerman/workerman/Events/Select.php(311): Workerman\Connection\TcpConnection->baseRead()
+#2 /var/www/socketio/vendor/workerman/workerman/Worker.php(1719): Workerman\Events\Select->loop()
+#3 /var/www/socketio/vendor/workerman/workerman/Worker.php(1510): Workerman\Worker::forkOneWorkerForLinux()
+#4 /var/www/socketio/vendor/workerman/workerman/Worker.php(1484): Workerman\Worker::forkWorkersForLinux()
+#5 /var/www/socketio/vendor/workerman/workerman/Worker.php(1869): Workerman\Worker::forkWorkers()
+#6 /var/www/socketio/vendor/workerman/workerman/Worker.php(1805): Workerman\Worker::monitorWorkersForLinux()
+#7 /var/www/socketio/vendor/workerman/workerman/Worker.php(563): Workerman\Worker::monitorWorkers()
+#8 /var/www/socketio/server.php(94): Workerman\Worker::runAll()
+#9 {main}
+2026-04-14 07:11:30 pid:55842 worker[none:56682] exit with status 64000
+2026-04-14 07:11:31 pid:56709 TypeError: {closure}(): Argument #1 ($connection) must be of type TcpConnection, Workerman\Connection\TcpConnection given, called in /var/www/socketio/vendor/workerman/workerman/Connection/TcpConnection.php on line 653 and defined in /var/www/socketio/server.php:14
+Stack trace:
+#0 /var/www/socketio/vendor/workerman/workerman/Connection/TcpConnection.php(653): {closure}()
+#1 /var/www/socketio/vendor/workerman/workerman/Events/Select.php(311): Workerman\Connection\TcpConnection->baseRead()
+#2 /var/www/socketio/vendor/workerman/workerman/Worker.php(1719): Workerman\Events\Select->loop()
+#3 /var/www/socketio/vendor/workerman/workerman/Worker.php(1510): Workerman\Worker::forkOneWorkerForLinux()
+#4 /var/www/socketio/vendor/workerman/workerman/Worker.php(1484): Workerman\Worker::forkWorkersForLinux()
+#5 /var/www/socketio/vendor/workerman/workerman/Worker.php(1869): Workerman\Worker::forkWorkers()
+#6 /var/www/socketio/vendor/workerman/workerman/Worker.php(1805): Workerman\Worker::monitorWorkersForLinux()
+#7 /var/www/socketio/vendor/workerman/workerman/Worker.php(563): Workerman\Worker::monitorWorkers()
+#8 /var/www/socketio/server.php(94): Workerman\Worker::runAll()
+#9 {main}
+2026-04-14 07:11:31 pid:55842 worker[none:56709] exit with status 64000
+2026-04-14 07:11:37 pid:56747 TypeError: {closure}(): Argument #1 ($connection) must be of type TcpConnection, Workerman\Connection\TcpConnection given, called in /var/www/socketio/vendor/workerman/workerman/Connection/TcpConnection.php on line 653 and defined in /var/www/socketio/server.php:14
+Stack trace:
+#0 /var/www/socketio/vendor/workerman/workerman/Connection/TcpConnection.php(653): {closure}()
+#1 /var/www/socketio/vendor/workerman/workerman/Events/Select.php(311): Workerman\Connection\TcpConnection->baseRead()
+#2 /var/www/socketio/vendor/workerman/workerman/Worker.php(1719): Workerman\Events\Select->loop()
+#3 /var/www/socketio/vendor/workerman/workerman/Worker.php(1510): Workerman\Worker::forkOneWorkerForLinux()
+#4 /var/www/socketio/vendor/workerman/workerman/Worker.php(1484): Workerman\Worker::forkWorkersForLinux()
+#5 /var/www/socketio/vendor/workerman/workerman/Worker.php(1869): Workerman\Worker::forkWorkers()
+#6 /var/www/socketio/vendor/workerman/workerman/Worker.php(1805): Workerman\Worker::monitorWorkersForLinux()
+#7 /var/www/socketio/vendor/workerman/workerman/Worker.php(563): Workerman\Worker::monitorWorkers()
+#8 /var/www/socketio/server.php(94): Workerman\Worker::runAll()
+#9 {main}
+2026-04-14 07:11:37 pid:55842 worker[none:56747] exit with status 64000
+2026-04-14 07:12:07 pid:56819 TypeError: {closure}(): Argument #1 ($connection) must be of type TcpConnection, Workerman\Connection\TcpConnection given, called in /var/www/socketio/vendor/workerman/workerman/Connection/TcpConnection.php on line 653 and defined in /var/www/socketio/server.php:14
+Stack trace:
+#0 /var/www/socketio/vendor/workerman/workerman/Connection/TcpConnection.php(653): {closure}()
+#1 /var/www/socketio/vendor/workerman/workerman/Events/Select.php(311): Workerman\Connection\TcpConnection->baseRead()
+#2 /var/www/socketio/vendor/workerman/workerman/Worker.php(1719): Workerman\Events\Select->loop()
+#3 /var/www/socketio/vendor/workerman/workerman/Worker.php(1510): Workerman\Worker::forkOneWorkerForLinux()
+#4 /var/www/socketio/vendor/workerman/workerman/Worker.php(1484): Workerman\Worker::forkWorkersForLinux()
+#5 /var/www/socketio/vendor/workerman/workerman/Worker.php(1869): Workerman\Worker::forkWorkers()
+#6 /var/www/socketio/vendor/workerman/workerman/Worker.php(1805): Workerman\Worker::monitorWorkersForLinux()
+#7 /var/www/socketio/vendor/workerman/workerman/Worker.php(563): Workerman\Worker::monitorWorkers()
+#8 /var/www/socketio/server.php(94): Workerman\Worker::runAll()
+#9 {main}
+2026-04-14 07:12:07 pid:55842 worker[none:56819] exit with status 64000
+2026-04-14 07:12:07 pid:57367 TypeError: {closure}(): Argument #1 ($connection) must be of type TcpConnection, Workerman\Connection\TcpConnection given, called in /var/www/socketio/vendor/workerman/workerman/Connection/TcpConnection.php on line 653 and defined in /var/www/socketio/server.php:14
+Stack trace:
+#0 /var/www/socketio/vendor/workerman/workerman/Connection/TcpConnection.php(653): {closure}()
+#1 /var/www/socketio/vendor/workerman/workerman/Events/Select.php(311): Workerman\Connection\TcpConnection->baseRead()
+#2 /var/www/socketio/vendor/workerman/workerman/Worker.php(1719): Workerman\Events\Select->loop()
+#3 /var/www/socketio/vendor/workerman/workerman/Worker.php(1510): Workerman\Worker::forkOneWorkerForLinux()
+#4 /var/www/socketio/vendor/workerman/workerman/Worker.php(1484): Workerman\Worker::forkWorkersForLinux()
+#5 /var/www/socketio/vendor/workerman/workerman/Worker.php(1869): Workerman\Worker::forkWorkers()
+#6 /var/www/socketio/vendor/workerman/workerman/Worker.php(1805): Workerman\Worker::monitorWorkersForLinux()
+#7 /var/www/socketio/vendor/workerman/workerman/Worker.php(563): Workerman\Worker::monitorWorkers()
+#8 /var/www/socketio/server.php(94): Workerman\Worker::runAll()
+#9 {main}
+2026-04-14 07:12:08 pid:55842 worker[none:57367] exit with status 64000
+2026-04-14 07:12:35 pid:55842 Workerman[server.php] stopping ...
+2026-04-14 07:12:35 pid:55842 Workerman[server.php] has been stopped
+2026-04-14 07:12:53 pid:58121 Workerman[server.php] start in DEBUG mode
+2026-04-14 07:12:57 pid:58122 TypeError: {closure}(): Argument #2 ($request) must be of type Request, Workerman\Protocols\Http\Request given, called in /var/www/socketio/vendor/workerman/workerman/Connection/TcpConnection.php on line 653 and defined in /var/www/socketio/server.php:15
+Stack trace:
+#0 /var/www/socketio/vendor/workerman/workerman/Connection/TcpConnection.php(653): {closure}()
+#1 /var/www/socketio/vendor/workerman/workerman/Events/Select.php(311): Workerman\Connection\TcpConnection->baseRead()
+#2 /var/www/socketio/vendor/workerman/workerman/Worker.php(1719): Workerman\Events\Select->loop()
+#3 /var/www/socketio/vendor/workerman/workerman/Worker.php(1510): Workerman\Worker::forkOneWorkerForLinux()
+#4 /var/www/socketio/vendor/workerman/workerman/Worker.php(1484): Workerman\Worker::forkWorkersForLinux()
+#5 /var/www/socketio/vendor/workerman/workerman/Worker.php(561): Workerman\Worker::forkWorkers()
+#6 /var/www/socketio/server.php(95): Workerman\Worker::runAll()
+#7 {main}
+2026-04-14 07:12:57 pid:58121 worker[none:58122] exit with status 64000
+2026-04-14 07:13:15 pid:58121 Workerman[server.php] stopping ...
+2026-04-14 07:13:15 pid:58121 Workerman[server.php] has been stopped
+2026-04-14 07:13:17 pid:58506 Workerman[server.php] start in DEBUG mode
+2026-04-14 07:14:00 pid:58506 Workerman[server.php] stopping ...
+2026-04-14 07:14:00 pid:58506 Workerman[server.php] has been stopped
+2026-04-14 07:14:01 pid:59290 Workerman[server.php] start in DEBUG mode
+2026-04-14 07:15:06 pid:59290 Workerman[server.php] stopping ...
+2026-04-14 07:15:06 pid:59290 Workerman[server.php] has been stopped
+2026-04-14 07:15:07 pid:60454 Workerman[server.php] start in DEBUG mode
+2026-04-14 07:27:16 pid:73309 Workerman[server.php] stop 
+2026-04-14 07:27:16 pid:73309 Workerman[server.php] is stopping ...
+2026-04-14 07:27:16 pid:60454 Workerman[server.php] stopping ...
+2026-04-14 07:27:17 pid:60454 Workerman[server.php] has been stopped
+2026-04-14 07:27:17 pid:73309 Workerman[server.php] stop success
+2026-04-14 07:27:29 pid:73562 Workerman[server.php] start in DEBUG mode
+2026-04-14 07:33:18 pid:80848 Workerman[server.php] restart 
+2026-04-14 07:33:18 pid:80848 Workerman[server.php] is stopping ...
+2026-04-14 07:33:18 pid:73562 Workerman[server.php] stopping ...
+2026-04-14 07:33:19 pid:73562 Workerman[server.php] has been stopped
+2026-04-14 07:33:19 pid:80848 Workerman[server.php] stop success
+2026-04-14 07:38:20 pid:87163 Workerman[server.php] start in DEBUG mode
+2026-04-14 07:38:20 pid:87163 Workerman[server.php] already running
+2026-04-14 07:38:24 pid:87242 Workerman[server.php] stop 
+2026-04-14 07:38:24 pid:87242 Workerman[server.php] is stopping ...
+2026-04-14 07:38:24 pid:80848 Workerman[server.php] stopping ...
+2026-04-14 07:38:25 pid:80848 Workerman[server.php] has been stopped
+2026-04-14 07:38:25 pid:87242 Workerman[server.php] stop success
+2026-04-14 07:38:26 pid:87302 Workerman[server.php] start in DEBUG mode
+2026-04-14 07:45:28 pid:95018 Workerman[server.php] restart 
+2026-04-14 07:45:28 pid:95018 Workerman[server.php] is stopping ...
+2026-04-14 07:45:28 pid:87302 Workerman[server.php] stopping ...
+2026-04-14 07:45:29 pid:87302 Workerman[server.php] has been stopped
+2026-04-14 07:45:29 pid:95018 Workerman[server.php] stop success
+2026-04-14 07:47:05 pid:97180 Workerman[server.php] start in DEBUG mode
+2026-04-14 07:47:05 pid:97180 Workerman[server.php] already running
+2026-04-14 07:47:11 pid:97310 Workerman[server.php] restart 
+2026-04-14 07:47:11 pid:97310 Workerman[server.php] is stopping ...
+2026-04-14 07:47:11 pid:95018 Workerman[server.php] stopping ...
+2026-04-14 07:47:12 pid:95018 Workerman[server.php] has been stopped
+2026-04-14 07:47:12 pid:97310 Workerman[server.php] stop success
+2026-04-14 07:48:07 pid:97310 Workerman[server.php] stopping ...
+2026-04-14 07:48:07 pid:97310 Workerman[server.php] has been stopped
+2026-04-14 07:48:55 pid:99240 Workerman[server.php] restart 
+2026-04-14 07:48:55 pid:99240 Workerman[server.php] is stopping ...
+2026-04-14 07:48:55 pid:99240 Workerman[server.php] stop success
+2026-04-14 07:49:48 pid:100229 Workerman[server.php] restart 
+2026-04-14 07:49:48 pid:100229 Workerman[server.php] is stopping ...
+2026-04-14 07:49:49 pid:100229 Workerman[server.php] stop success
+2026-04-14 07:49:56 pid:100229 Workerman[server.php] stopping ...
+2026-04-14 07:49:56 pid:100229 Workerman[server.php] has been stopped
+2026-04-14 07:50:08 pid:100588 Workerman[server.php] restart 
+2026-04-14 07:50:09 pid:100588 Workerman[server.php] is stopping ...
+2026-04-14 07:50:09 pid:100588 Workerman[server.php] stop success
+2026-04-14 07:51:19 pid:100588 Workerman[server.php] stopping ...
+2026-04-14 07:51:19 pid:100588 Workerman[server.php] has been stopped
+2026-04-14 15:53:04 pid:103869 Workerman[server.php] restart 
+2026-04-14 15:53:04 pid:103869 Workerman[server.php] is stopping ...
+2026-04-14 15:53:04 pid:103869 Workerman[server.php] stop success
+2026-04-14 15:58:57 pid:110036 Workerman[server.php] restart 
+2026-04-14 15:58:57 pid:110036 Workerman[server.php] is stopping ...
+2026-04-14 15:58:57 pid:103869 Workerman[server.php] stopping ...
+2026-04-14 15:58:59 pid:103869 Workerman[server.php] has been stopped
+2026-04-14 15:58:59 pid:110036 Workerman[server.php] stop success
+2026-04-14 16:29:52 pid:147498 Workerman[server.php] restart 
+2026-04-14 16:29:52 pid:147498 Workerman[server.php] is stopping ...
+2026-04-14 16:29:52 pid:110036 Workerman[server.php] stopping ...
+2026-04-14 16:29:53 pid:110036 Workerman[server.php] has been stopped
+2026-04-14 16:29:53 pid:147498 Workerman[server.php] stop success
+2026-04-14 16:34:03 pid:147555 ArgumentCountError: Too few arguments to function {closure}(), 0 passed and exactly 1 expected in /var/www/socketio/server.php:42
+Stack trace:
+#0 [internal function]: {closure}()
+#1 /var/www/socketio/src/EventHandler.php(674): call_user_func_array()
+#2 /var/www/socketio/src/EventHandler.php(539): PhpSocketIO\EventHandler->handleEvent()
+#3 /var/www/socketio/src/EventHandler.php(84): PhpSocketIO\EventHandler->PhpSocketIO\{closure}()
+#4 /var/www/socketio/src/EventHandler.php(91): PhpSocketIO\EventHandler->PhpSocketIO\{closure}()
+#5 /var/www/socketio/src/EventHandler.php(565): PhpSocketIO\EventHandler->runMiddlewares()
+#6 /var/www/socketio/src/EventHandler.php(1235): PhpSocketIO\EventHandler->handlePacket()
+#7 /var/www/socketio/src/SocketIOServer.php(430): PhpSocketIO\EventHandler->triggerEventWithAck()
+#8 /var/www/socketio/src/SocketIOServer.php(275): PhpSocketIO\SocketIOServer->handleEventPacket()
+#9 /var/www/socketio/src/SocketIOServer.php(64): PhpSocketIO\SocketIOServer->handleSocketIOMessage()
+#10 [internal function]: PhpSocketIO\SocketIOServer->PhpSocketIO\{closure}()
+#11 /var/www/socketio/src/EngineIOHandler.php(153): call_user_func()
+#12 /var/www/socketio/src/EngineIOHandler.php(84): PhpSocketIO\EngineIOHandler->handleMessage()
+#13 /var/www/socketio/src/EngineIOHandler.php(476): PhpSocketIO\EngineIOHandler->handlePacket()
+#14 /var/www/socketio/src/HttpRequestHandler.php(139): PhpSocketIO\EngineIOHandler->processWebSocketData()
+#15 /var/www/socketio/src/HttpRequestHandler.php(120): PhpSocketIO\HttpRequestHandler->processWebSocketData()
+#16 /var/www/socketio/src/HttpRequestHandler.php(35): PhpSocketIO\HttpRequestHandler->handleWebSocketMessage()
+#17 /var/www/socketio/src/SocketIOServer.php(166): PhpSocketIO\HttpRequestHandler->handleMessage()
+#18 /var/www/socketio/vendor/workerman/workerman/Connection/TcpConnection.php(653): PhpSocketIO\SocketIOServer->onMessage()
+#19 /var/www/socketio/vendor/workerman/workerman/Events/Select.php(311): Workerman\Connection\TcpConnection->baseRead()
+#20 /var/www/socketio/vendor/workerman/workerman/Worker.php(1719): Workerman\Events\Select->loop()
+#21 /var/www/socketio/vendor/workerman/workerman/Worker.php(1510): Workerman\Worker::forkOneWorkerForLinux()
+#22 /var/www/socketio/vendor/workerman/workerman/Worker.php(1484): Workerman\Worker::forkWorkersForLinux()
+#23 /var/www/socketio/vendor/workerman/workerman/Worker.php(561): Workerman\Worker::forkWorkers()
+#24 /var/www/socketio/server.php(88): Workerman\Worker::runAll()
+#25 {main}
+2026-04-14 16:34:04 pid:147498 worker[SocketIO-Server:147555] exit with status 64000
+2026-04-14 17:32:22 pid:147498 Workerman[server.php] stopping ...
+2026-04-14 17:32:22 pid:147498 Workerman[server.php] stopping ...
+2026-04-14 17:32:22 pid:147498 Workerman[server.php] has been stopped
+2026-04-14 17:56:52 pid:197977 Workerman[server.php] restart 
+2026-04-14 17:56:52 pid:197977 Workerman[server.php] is stopping ...
+2026-04-14 17:56:52 pid:197977 Workerman[server.php] stop success
+2026-04-14 18:06:47 pid:197977 Workerman[server.php] stopping ...
+2026-04-14 18:06:47 pid:197977 Workerman[server.php] has been stopped
+2026-04-14 18:06:48 pid:208706 Workerman[server.php] restart 
+2026-04-14 18:06:48 pid:208706 Workerman[server.php] is stopping ...
+2026-04-14 18:06:48 pid:208706 Workerman[server.php] stop success
+2026-04-14 18:15:33 pid:217790 Workerman[server.php] restart 
+2026-04-14 18:15:33 pid:217790 Workerman[server.php] is stopping ...
+2026-04-14 18:15:33 pid:208706 Workerman[server.php] stopping ...
+2026-04-14 18:15:34 pid:208706 Workerman[server.php] has been stopped
+2026-04-14 18:15:34 pid:217790 Workerman[server.php] stop success
+2026-04-14 18:16:25 pid:218896 Workerman[server.php] restart 
+2026-04-14 18:16:25 pid:218896 Workerman[server.php] is stopping ...
+2026-04-14 18:16:25 pid:217790 Workerman[server.php] stopping ...
+2026-04-14 18:16:26 pid:217790 Workerman[server.php] has been stopped
+2026-04-14 18:16:26 pid:218896 Workerman[server.php] stop success
+2026-04-14 18:21:58 pid:218896 Workerman[server.php] stopping ...
+2026-04-14 18:21:58 pid:218896 Workerman[server.php] has been stopped
+2026-04-14 18:25:15 pid:227454 Workerman[server.php] restart 
+2026-04-14 18:25:15 pid:227454 Workerman[server.php] is stopping ...
+2026-04-14 18:25:15 pid:227454 Workerman[server.php] stop success
+2026-04-14 18:27:34 pid:227454 Workerman[server.php] stopping ...
+2026-04-14 18:27:34 pid:227454 Workerman[server.php] has been stopped
+2026-04-14 18:29:15 pid:232061 Workerman[server.php] restart 
+2026-04-14 18:29:15 pid:232061 Workerman[server.php] is stopping ...
+2026-04-14 18:29:15 pid:232061 Workerman[server.php] stop success
+2026-04-14 18:36:12 pid:239665 Workerman[server.php] restart 
+2026-04-14 18:36:12 pid:239665 Workerman[server.php] is stopping ...
+2026-04-14 18:36:12 pid:232061 Workerman[server.php] stopping ...
+2026-04-14 18:36:13 pid:232061 Workerman[server.php] has been stopped
+2026-04-14 18:36:13 pid:239665 Workerman[server.php] stop success
+2026-04-14 18:40:51 pid:245666 Workerman[server.php] restart 
+2026-04-14 18:40:51 pid:245666 Workerman[server.php] is stopping ...
+2026-04-14 18:40:51 pid:239665 Workerman[server.php] stopping ...
+2026-04-14 18:40:52 pid:239665 Workerman[server.php] has been stopped
+2026-04-14 18:40:52 pid:245666 Workerman[server.php] stop success
+2026-04-14 18:44:11 pid:249270 Workerman[server.php] restart 
+2026-04-14 18:44:11 pid:249270 Workerman[server.php] is stopping ...
+2026-04-14 18:44:11 pid:245666 Workerman[server.php] stopping ...
+2026-04-14 18:44:12 pid:245666 Workerman[server.php] has been stopped
+2026-04-14 18:44:12 pid:249270 Workerman[server.php] stop success
+2026-04-14 18:45:30 pid:251031 Workerman[server.php] restart 
+2026-04-14 18:45:30 pid:251031 Workerman[server.php] is stopping ...
+2026-04-14 18:45:30 pid:249270 Workerman[server.php] stopping ...
+2026-04-14 18:45:31 pid:249270 Workerman[server.php] has been stopped
+2026-04-14 18:45:31 pid:251031 Workerman[server.php] stop success
+2026-04-14 18:50:56 pid:257023 Workerman[server.php] restart 
+2026-04-14 18:50:56 pid:257023 Workerman[server.php] is stopping ...
+2026-04-14 18:50:56 pid:251031 Workerman[server.php] stopping ...
+2026-04-14 18:50:57 pid:251031 Workerman[server.php] has been stopped
+2026-04-14 18:50:57 pid:257023 Workerman[server.php] stop success
+2026-04-14 18:51:48 pid:258200 Workerman[server.php] restart 
+2026-04-14 18:51:48 pid:258200 Workerman[server.php] is stopping ...
+2026-04-14 18:51:48 pid:257023 Workerman[server.php] stopping ...
+2026-04-14 18:51:49 pid:257023 Workerman[server.php] has been stopped
+2026-04-14 18:51:49 pid:258200 Workerman[server.php] stop success
+2026-04-14 18:53:48 pid:258200 Workerman[server.php] stopping ...
+2026-04-14 18:53:48 pid:258200 Workerman[server.php] has been stopped
+2026-04-14 18:54:21 pid:261052 Workerman[server.php] restart 
+2026-04-14 18:54:21 pid:261052 Workerman[server.php] is stopping ...
+2026-04-14 18:54:21 pid:261052 Workerman[server.php] stop success
+2026-04-14 18:55:02 pid:261077 Error: Using $this when not in object context in /var/www/socketio/src/PacketParser.php:465
+Stack trace:
+#0 /var/www/socketio/src/EngineIOHandler.php(591): PhpSocketIO\PacketParser::parseSocketIOPacket()
+#1 /var/www/socketio/src/HttpRequestHandler.php(225): PhpSocketIO\EngineIOHandler->processAllBinaryAttachments()
+#2 /var/www/socketio/src/HttpRequestHandler.php(185): PhpSocketIO\HttpRequestHandler->combineAllAttachments()
+#3 /var/www/socketio/src/HttpRequestHandler.php(127): PhpSocketIO\HttpRequestHandler->handleBinaryData()
+#4 /var/www/socketio/src/HttpRequestHandler.php(35): PhpSocketIO\HttpRequestHandler->handleWebSocketMessage()
+#5 /var/www/socketio/src/SocketIOServer.php(166): PhpSocketIO\HttpRequestHandler->handleMessage()
+#6 /var/www/socketio/vendor/workerman/workerman/Connection/TcpConnection.php(653): PhpSocketIO\SocketIOServer->onMessage()
+#7 /var/www/socketio/vendor/workerman/workerman/Events/Select.php(311): Workerman\Connection\TcpConnection->baseRead()
+#8 /var/www/socketio/vendor/workerman/workerman/Worker.php(1719): Workerman\Events\Select->loop()
+#9 /var/www/socketio/vendor/workerman/workerman/Worker.php(1510): Workerman\Worker::forkOneWorkerForLinux()
+#10 /var/www/socketio/vendor/workerman/workerman/Worker.php(1484): Workerman\Worker::forkWorkersForLinux()
+#11 /var/www/socketio/vendor/workerman/workerman/Worker.php(561): Workerman\Worker::forkWorkers()
+#12 /var/www/socketio/server.php(88): Workerman\Worker::runAll()
+#13 {main}
+2026-04-14 18:55:02 pid:261052 worker[SocketIO-Server:261077] exit with status 64000
+2026-04-14 18:56:24 pid:263324 Workerman[server.php] restart 
+2026-04-14 18:56:24 pid:263324 Workerman[server.php] is stopping ...
+2026-04-14 18:56:24 pid:261052 Workerman[server.php] stopping ...
+2026-04-14 18:56:25 pid:261052 Workerman[server.php] has been stopped
+2026-04-14 18:56:25 pid:263324 Workerman[server.php] stop success
+2026-04-14 18:57:10 pid:264425 Workerman[server.php] restart 
+2026-04-14 18:57:10 pid:264425 Workerman[server.php] is stopping ...
+2026-04-14 18:57:10 pid:263324 Workerman[server.php] stopping ...
+2026-04-14 18:57:11 pid:263324 Workerman[server.php] has been stopped
+2026-04-14 18:57:11 pid:264425 Workerman[server.php] stop success
+2026-04-14 19:05:17 pid:273425 Workerman[server.php] restart 
+2026-04-14 19:05:17 pid:273425 Workerman[server.php] is stopping ...
+2026-04-14 19:05:17 pid:264425 Workerman[server.php] stopping ...
+2026-04-14 19:05:18 pid:264425 Workerman[server.php] has been stopped
+2026-04-14 19:05:18 pid:273425 Workerman[server.php] stop success
+2026-04-14 19:29:57 pid:304426 Workerman[server.php] restart 
+2026-04-14 19:29:58 pid:304426 Workerman[server.php] is stopping ...
+2026-04-14 19:29:58 pid:273425 Workerman[server.php] stopping ...
+2026-04-14 19:29:59 pid:273425 Workerman[server.php] has been stopped
+2026-04-14 19:29:59 pid:304426 Workerman[server.php] stop success
+2026-04-14 19:36:25 pid:304426 Workerman[server.php] stopping ...
+2026-04-14 19:36:25 pid:304426 Workerman[server.php] stopping ...
+2026-04-14 19:36:26 pid:304426 worker[SocketIO-Server:304482] exit with status 65280
+2026-04-14 19:36:26 pid:304426 Workerman[server.php] has been stopped
+2026-04-14 19:40:38 pid:315356 Workerman[server.php] restart 
+2026-04-14 19:40:38 pid:315356 Workerman[server.php] is stopping ...
+2026-04-14 19:40:38 pid:315356 Workerman[server.php] stop success
+2026-04-14 19:42:16 pid:317601 Workerman[server.php] restart 
+2026-04-14 19:42:16 pid:317601 Workerman[server.php] is stopping ...
+2026-04-14 19:42:16 pid:315356 Workerman[server.php] stopping ...
+2026-04-14 19:42:17 pid:315356 Workerman[server.php] has been stopped
+2026-04-14 19:42:17 pid:317601 Workerman[server.php] stop success
+2026-04-14 19:58:55 pid:336539 Workerman[server.php] restart 
+2026-04-14 19:58:55 pid:336539 Workerman[server.php] is stopping ...
+2026-04-14 19:58:55 pid:317601 Workerman[server.php] stopping ...
+2026-04-14 19:58:56 pid:317601 Workerman[server.php] has been stopped
+2026-04-14 19:58:56 pid:336539 Workerman[server.php] stop success
+2026-04-14 20:03:02 pid:340942 Workerman[server.php] restart 
+2026-04-14 20:03:02 pid:340942 Workerman[server.php] is stopping ...
+2026-04-14 20:03:02 pid:336539 Workerman[server.php] stopping ...
+2026-04-14 20:03:02 pid:336539 Workerman[server.php] has been stopped
+2026-04-14 20:03:02 pid:340942 Workerman[server.php] stop success
+2026-04-14 20:04:36 pid:343061 Workerman[server.php] restart 
+2026-04-14 20:04:36 pid:343061 Workerman[server.php] is stopping ...
+2026-04-14 20:04:36 pid:340942 Workerman[server.php] stopping ...
+2026-04-14 20:04:37 pid:340942 Workerman[server.php] has been stopped
+2026-04-14 20:04:37 pid:343061 Workerman[server.php] stop success
+2026-04-14 20:05:28 pid:344229 Workerman[server.php] restart 
+2026-04-14 20:05:28 pid:344229 Workerman[server.php] is stopping ...
+2026-04-14 20:05:28 pid:343061 Workerman[server.php] stopping ...
+2026-04-14 20:05:29 pid:343061 Workerman[server.php] has been stopped
+2026-04-14 20:05:29 pid:344229 Workerman[server.php] stop success
+2026-04-14 20:10:01 pid:349250 Workerman[server.php] restart 
+2026-04-14 20:10:02 pid:349250 Workerman[server.php] is stopping ...
+2026-04-14 20:10:02 pid:344229 Workerman[server.php] stopping ...
+2026-04-14 20:10:03 pid:344229 Workerman[server.php] has been stopped
+2026-04-14 20:10:03 pid:349250 Workerman[server.php] stop success
+2026-04-14 20:13:41 pid:353960 Workerman[server.php] restart 
+2026-04-14 20:13:41 pid:353960 Workerman[server.php] is stopping ...
+2026-04-14 20:13:41 pid:349250 Workerman[server.php] stopping ...
+2026-04-14 20:13:42 pid:349250 Workerman[server.php] has been stopped
+2026-04-14 20:13:42 pid:353960 Workerman[server.php] stop success
+2026-04-14 20:28:53 pid:371679 Workerman[server.php] restart 
+2026-04-14 20:28:53 pid:371679 Workerman[server.php] is stopping ...
+2026-04-14 20:28:54 pid:353960 Workerman[server.php] stopping ...
+2026-04-14 20:28:55 pid:353960 Workerman[server.php] has been stopped
+2026-04-14 20:28:55 pid:371679 Workerman[server.php] stop success
+2026-04-14 20:31:08 pid:371679 Workerman[server.php] stopping ...
+2026-04-14 20:31:08 pid:371679 Workerman[server.php] has been stopped
+2026-04-14 20:31:10 pid:374309 Workerman[server.php] restart 
+2026-04-14 20:31:10 pid:374309 Workerman[server.php] is stopping ...
+2026-04-14 20:31:10 pid:374309 Workerman[server.php] stop success
+2026-04-14 20:31:56 pid:375202 Workerman[server.php] restart 
+2026-04-14 20:31:56 pid:375202 Workerman[server.php] is stopping ...
+2026-04-14 20:31:56 pid:375202 Workerman[server.php] stop success
+2026-04-14 20:34:38 pid:375202 Workerman[server.php] stopping ...
+2026-04-14 20:34:38 pid:375202 Workerman[server.php] has been stopped
+2026-04-14 20:34:39 pid:378150 Workerman[server.php] restart 
+2026-04-14 20:34:39 pid:378150 Workerman[server.php] is stopping ...
+2026-04-14 20:34:39 pid:378150 Workerman[server.php] stop success
+2026-04-14 20:34:50 pid:378150 Workerman[server.php] stopping ...
+2026-04-14 20:34:50 pid:378150 Workerman[server.php] has been stopped
+2026-04-14 20:34:51 pid:378343 Workerman[server.php] restart 
+2026-04-14 20:34:51 pid:378343 Workerman[server.php] is stopping ...
+2026-04-14 20:34:51 pid:378343 Workerman[server.php] stop success
+2026-04-14 20:41:28 pid:385735 Workerman[server.php] restart 
+2026-04-14 20:41:28 pid:385735 Workerman[server.php] is stopping ...
+2026-04-14 20:41:28 pid:378343 Workerman[server.php] stopping ...
+2026-04-14 20:41:29 pid:378343 Workerman[server.php] has been stopped
+2026-04-14 20:41:29 pid:385735 Workerman[server.php] stop success
+2026-04-14 20:41:55 pid:386365 Workerman[server.php] restart 
+2026-04-14 20:41:55 pid:386365 Workerman[server.php] is stopping ...
+2026-04-14 20:41:55 pid:385735 Workerman[server.php] stopping ...
+2026-04-14 20:41:56 pid:385735 Workerman[server.php] has been stopped
+2026-04-14 20:41:56 pid:386365 Workerman[server.php] stop success
+2026-04-14 20:45:02 pid:389874 Workerman[server.php] restart 
+2026-04-14 20:45:02 pid:389874 Workerman[server.php] is stopping ...
+2026-04-14 20:45:02 pid:386365 Workerman[server.php] stopping ...
+2026-04-14 20:45:03 pid:386365 Workerman[server.php] has been stopped
+2026-04-14 20:45:03 pid:389874 Workerman[server.php] stop success
+2026-04-14 20:45:45 pid:390778 Workerman[server.php] restart 
+2026-04-14 20:45:45 pid:390778 Workerman[server.php] is stopping ...
+2026-04-14 20:45:45 pid:389874 Workerman[server.php] stopping ...
+2026-04-14 20:45:46 pid:389874 Workerman[server.php] has been stopped
+2026-04-14 20:45:46 pid:390778 Workerman[server.php] stop success
+2026-04-14 20:50:05 pid:390778 Workerman[server.php] stopping ...
+2026-04-14 20:50:05 pid:390778 Workerman[server.php] has been stopped
+2026-04-14 20:50:10 pid:395644 Workerman[server.php] restart 
+2026-04-14 20:50:10 pid:395644 Workerman[server.php] is stopping ...
+2026-04-14 20:50:10 pid:395644 Workerman[server.php] stop success
+2026-04-14 21:01:42 pid:407267 Workerman[server.php] restart 
+2026-04-14 21:01:42 pid:407267 Workerman[server.php] is stopping ...
+2026-04-14 21:01:42 pid:395644 Workerman[server.php] stopping ...
+2026-04-14 21:01:43 pid:395644 Workerman[server.php] has been stopped
+2026-04-14 21:01:43 pid:407267 Workerman[server.php] stop success
+2026-04-14 21:02:24 pid:408399 Workerman[server.php] start in DEBUG mode
+2026-04-14 21:02:24 pid:408399 Workerman[server.php] already running
+2026-04-14 21:02:34 pid:408605 Workerman[server.php] status 
+2026-04-14 21:05:53 pid:412624 Workerman[server.php] restart 
+2026-04-14 21:05:54 pid:412624 Workerman[server.php] is stopping ...
+2026-04-14 21:05:54 pid:407267 Workerman[server.php] stopping ...
+2026-04-14 21:05:55 pid:407267 Workerman[server.php] has been stopped
+2026-04-14 21:05:55 pid:412624 Workerman[server.php] stop success
+2026-04-14 21:08:06 pid:412624 Workerman[server.php] stopping ...
+2026-04-14 21:08:06 pid:412624 Workerman[server.php] stopping ...
+2026-04-14 21:08:06 pid:412624 Workerman[server.php] has been stopped
+2026-04-14 21:11:05 pid:417218 Workerman[server.php] restart 
+2026-04-14 21:11:05 pid:417218 Workerman[server.php] is stopping ...
+2026-04-14 21:11:05 pid:417218 Workerman[server.php] stop success
+2026-04-14 21:33:15 pid:417218 Workerman[server.php] stopping ...
+2026-04-14 21:33:15 pid:417218 Workerman[server.php] stopping ...
+2026-04-14 21:33:15 pid:417218 Workerman[server.php] has been stopped
+2026-04-14 21:38:59 pid:445090 Workerman[server.php] restart 
+2026-04-14 21:38:59 pid:445090 Workerman[server.php] is stopping ...
+2026-04-14 21:38:59 pid:445090 Workerman[server.php] stop success
+2026-04-14 21:40:51 pid:446953 Workerman[server.php] start in DEBUG mode
+2026-04-14 21:40:51 pid:446953 Workerman[server.php] already running
+2026-04-14 21:41:04 pid:447208 Workerman[server.php] status 
+2026-04-14 21:41:15 pid:445090 Workerman[server.php] stopping ...
+2026-04-14 21:41:15 pid:445090 Workerman[server.php] has been stopped
+2026-04-14 21:54:08 pid:460510 Workerman[server.php] start in DEBUG mode
+2026-04-14 21:54:20 pid:460755 Workerman[server.php] status 
+2026-04-14 21:58:03 pid:465679 Workerman[server.php] start in DEBUG mode
+2026-04-14 21:58:03 pid:465679 Workerman[server.php] already running
+2026-04-14 21:58:13 pid:465980 Workerman[server.php] status 
+2026-04-14 21:59:31 pid:467151 Workerman[server.php] restart 
+2026-04-14 21:59:31 pid:467151 Workerman[server.php] is stopping ...
+2026-04-14 21:59:31 pid:460510 Workerman[server.php] stopping ...
+2026-04-14 21:59:32 pid:460510 Workerman[server.php] has been stopped
+2026-04-14 21:59:32 pid:467151 Workerman[server.php] stop success
+2026-04-14 22:00:53 pid:467151 Workerman[server.php] stopping ...
+2026-04-14 22:00:53 pid:467151 Workerman[server.php] has been stopped
+2026-04-14 22:00:55 pid:468369 Workerman[server.php] restart 
+2026-04-14 22:00:55 pid:468369 Workerman[server.php] is stopping ...
+2026-04-14 22:00:55 pid:468369 Workerman[server.php] stop success
+2026-04-14 22:06:54 pid:474831 Workerman[server.php] start in DEBUG mode
+2026-04-14 22:06:54 pid:474831 Workerman[server.php] already running
+2026-04-14 22:11:05 pid:479466 Workerman[server.php] start in DEBUG mode
+2026-04-14 22:11:05 pid:479466 Workerman[server.php] already running
+2026-04-14 22:11:39 pid:468369 Workerman[server.php] stopping ...
+2026-04-14 22:11:39 pid:468369 Workerman[server.php] has been stopped
+2026-04-14 22:11:40 pid:480157 Workerman[server.php] restart 
+2026-04-14 22:11:40 pid:480157 Workerman[server.php] is stopping ...
+2026-04-14 22:11:40 pid:480157 Workerman[server.php] stop success
+2026-04-14 22:19:54 pid:480157 Workerman[server.php] stopping ...
+2026-04-14 22:19:54 pid:480157 Workerman[server.php] has been stopped
+2026-04-14 22:19:55 pid:489154 Workerman[server.php] restart 
+2026-04-14 22:19:56 pid:489154 Workerman[server.php] is stopping ...
+2026-04-14 22:19:56 pid:489154 Workerman[server.php] stop success
+2026-04-14 22:32:20 pid:489154 Workerman[server.php] stopping ...
+2026-04-14 22:32:20 pid:489154 Workerman[server.php] has been stopped
+2026-04-14 22:32:21 pid:502994 Workerman[server.php] restart 
+2026-04-14 22:32:22 pid:502994 Workerman[server.php] is stopping ...
+2026-04-14 22:32:22 pid:502994 Workerman[server.php] stop success
+2026-04-14 22:47:26 pid:502994 Workerman[server.php] stopping ...
+2026-04-14 22:47:27 pid:502994 Workerman[server.php] has been stopped
+2026-04-14 22:47:27 pid:517724 Workerman[server.php] restart 
+2026-04-14 22:47:27 pid:517724 Workerman[server.php] is stopping ...
+2026-04-14 22:47:27 pid:517724 Workerman[server.php] stop success
+2026-04-14 22:54:02 pid:517724 Workerman[server.php] stopping ...
+2026-04-14 22:54:02 pid:517724 Workerman[server.php] has been stopped
+2026-04-14 22:54:03 pid:522473 Workerman[server.php] restart 
+2026-04-14 22:54:03 pid:522473 Workerman[server.php] is stopping ...
+2026-04-14 22:54:03 pid:522473 Workerman[server.php] stop success
+2026-04-14 22:54:58 pid:522474 Error: Undefined constant "PhpSocketIO\binaryAttachments" in /var/www/socketio/src/Socket.php:98
+Stack trace:
+#0 /var/www/socketio/server.php(69): PhpSocketIO\Socket->emitBinary()
+#1 [internal function]: {closure}()
+#2 /var/www/socketio/src/EventHandler.php(604): call_user_func_array()
+#3 /var/www/socketio/src/EventHandler.php(518): PhpSocketIO\EventHandler->handleEvent()
+#4 /var/www/socketio/src/EventHandler.php(77): PhpSocketIO\EventHandler->PhpSocketIO\{closure}()
+#5 /var/www/socketio/src/EventHandler.php(80): PhpSocketIO\EventHandler->PhpSocketIO\{closure}()
+#6 /var/www/socketio/src/EventHandler.php(528): PhpSocketIO\EventHandler->runMiddlewares()
+#7 /var/www/socketio/src/EngineIOHandler.php(489): PhpSocketIO\EventHandler->handlePacket()
+#8 /var/www/socketio/src/EngineIOHandler.php(455): PhpSocketIO\EngineIOHandler->processBinaryPacket()
+#9 /var/www/socketio/src/HttpRequestHandler.php(225): PhpSocketIO\EngineIOHandler->processAllBinaryAttachments()
+#10 /var/www/socketio/src/HttpRequestHandler.php(185): PhpSocketIO\HttpRequestHandler->combineAllAttachments()
+#11 /var/www/socketio/src/HttpRequestHandler.php(127): PhpSocketIO\HttpRequestHandler->handleBinaryData()
+#12 /var/www/socketio/src/HttpRequestHandler.php(35): PhpSocketIO\HttpRequestHandler->handleWebSocketMessage()
+#13 /var/www/socketio/src/SocketIOServer.php(162): PhpSocketIO\HttpRequestHandler->handleMessage()
+#14 /var/www/socketio/vendor/workerman/workerman/Connection/TcpConnection.php(653): PhpSocketIO\SocketIOServer->onMessage()
+#15 /var/www/socketio/vendor/workerman/workerman/Events/Select.php(311): Workerman\Connection\TcpConnection->baseRead()
+#16 /var/www/socketio/vendor/workerman/workerman/Worker.php(1719): Workerman\Events\Select->loop()
+#17 /var/www/socketio/vendor/workerman/workerman/Worker.php(1510): Workerman\Worker::forkOneWorkerForLinux()
+#18 /var/www/socketio/vendor/workerman/workerman/Worker.php(1484): Workerman\Worker::forkWorkersForLinux()
+#19 /var/www/socketio/vendor/workerman/workerman/Worker.php(561): Workerman\Worker::forkWorkers()
+#20 /var/www/socketio/server.php(99): Workerman\Worker::runAll()
+#21 {main}
+2026-04-14 22:54:58 pid:522473 worker[SocketIO-Server:522474] exit with status 64000
+2026-04-14 22:55:23 pid:522473 Workerman[server.php] stopping ...
+2026-04-14 22:55:23 pid:522473 Workerman[server.php] has been stopped
+2026-04-14 22:55:24 pid:523997 Workerman[server.php] restart 
+2026-04-14 22:55:24 pid:523997 Workerman[server.php] is stopping ...
+2026-04-14 22:55:24 pid:523997 Workerman[server.php] stop success
+2026-04-14 23:01:59 pid:523997 Workerman[server.php] stopping ...
+2026-04-14 23:01:59 pid:523997 Workerman[server.php] has been stopped
+2026-04-14 23:02:00 pid:529717 Workerman[server.php] restart 
+2026-04-14 23:02:00 pid:529717 Workerman[server.php] is stopping ...
+2026-04-14 23:02:00 pid:529717 Workerman[server.php] stop success
+2026-04-14 23:06:19 pid:529717 Workerman[server.php] stopping ...
+2026-04-14 23:06:19 pid:529717 Workerman[server.php] has been stopped
+2026-04-14 23:06:20 pid:534601 Workerman[server.php] restart 
+2026-04-14 23:06:20 pid:534601 Workerman[server.php] is stopping ...
+2026-04-14 23:06:20 pid:534601 Workerman[server.php] stop success
+2026-04-14 23:08:38 pid:534601 Workerman[server.php] stopping ...
+2026-04-14 23:08:38 pid:534601 Workerman[server.php] has been stopped
+2026-04-14 23:08:39 pid:537206 Workerman[server.php] restart 
+2026-04-14 23:08:39 pid:537206 Workerman[server.php] is stopping ...
+2026-04-14 23:08:39 pid:537206 Workerman[server.php] stop success
+2026-04-14 23:11:21 pid:537206 Workerman[server.php] stopping ...
+2026-04-14 23:11:21 pid:537206 Workerman[server.php] has been stopped
+2026-04-14 23:11:21 pid:540264 Workerman[server.php] restart 
+2026-04-14 23:11:22 pid:540264 Workerman[server.php] is stopping ...
+2026-04-14 23:11:22 pid:540264 Workerman[server.php] stop success
+2026-04-14 23:12:26 pid:540264 Workerman[server.php] stopping ...
+2026-04-14 23:12:26 pid:540264 Workerman[server.php] has been stopped
+2026-04-14 23:12:27 pid:541465 Workerman[server.php] restart 
+2026-04-14 23:12:27 pid:541465 Workerman[server.php] is stopping ...
+2026-04-14 23:12:27 pid:541465 Workerman[server.php] stop success
+2026-04-14 23:13:51 pid:541465 Workerman[server.php] stopping ...
+2026-04-14 23:13:51 pid:541465 Workerman[server.php] has been stopped
+2026-04-14 23:13:52 pid:543049 Workerman[server.php] restart 
+2026-04-14 23:13:52 pid:543049 Workerman[server.php] is stopping ...
+2026-04-14 23:13:52 pid:543049 Workerman[server.php] stop success
+2026-04-14 23:17:14 pid:543049 Workerman[server.php] stopping ...
+2026-04-14 23:17:14 pid:543049 Workerman[server.php] has been stopped
+2026-04-14 23:17:15 pid:546913 Workerman[server.php] restart 
+2026-04-14 23:17:15 pid:546913 Workerman[server.php] is stopping ...
+2026-04-14 23:17:15 pid:546913 Workerman[server.php] stop success
+2026-04-14 23:40:40 pid:546913 Workerman[server.php] stopping ...
+2026-04-14 23:40:40 pid:546913 Workerman[server.php] stopping ...
+2026-04-14 23:40:40 pid:546913 Workerman[server.php] has been stopped
+2026-04-14 23:45:20 pid:577457 Workerman[server.php] restart 
+2026-04-14 23:45:20 pid:577457 Workerman[server.php] is stopping ...
+2026-04-14 23:45:20 pid:577457 Workerman[server.php] stop success
+2026-04-14 23:51:33 pid:584404 Workerman[server.php] start in DEBUG mode
+2026-04-14 23:51:33 pid:584404 Workerman[server.php] already running
+2026-04-14 23:52:52 pid:577457 Workerman[server.php] stopping ...
+2026-04-14 23:52:52 pid:577457 Workerman[server.php] has been stopped
+2026-04-14 23:52:53 pid:585910 Workerman[server.php] restart 
+2026-04-14 23:52:53 pid:585910 Workerman[server.php] is stopping ...
+2026-04-14 23:52:53 pid:585910 Workerman[server.php] stop success
+2026-04-14 23:55:56 pid:589356 Workerman[server.php] start in DEBUG mode
+2026-04-14 23:55:56 pid:589356 Workerman[server.php] already running
+2026-04-14 23:56:36 pid:585910 Workerman[server.php] stopping ...
+2026-04-14 23:56:36 pid:585910 Workerman[server.php] has been stopped
+2026-04-14 23:56:37 pid:590129 Workerman[server.php] restart 
+2026-04-14 23:56:37 pid:590129 Workerman[server.php] is stopping ...
+2026-04-14 23:56:37 pid:590129 Workerman[server.php] stop success
+2026-04-14 23:58:31 pid:592271 Workerman[server.php] start in DEBUG mode
+2026-04-14 23:58:31 pid:592271 Workerman[server.php] already running
+2026-04-15 00:01:51 pid:596113 Workerman[server.php] start in DEBUG mode
+2026-04-15 00:01:51 pid:596113 Workerman[server.php] already running
+2026-04-15 00:02:18 pid:590129 Workerman[server.php] stopping ...
+2026-04-15 00:02:18 pid:590129 Workerman[server.php] has been stopped
+2026-04-15 00:02:19 pid:596687 Workerman[server.php] restart 
+2026-04-15 00:02:19 pid:596687 Workerman[server.php] is stopping ...
+2026-04-15 00:02:19 pid:596687 Workerman[server.php] stop success
+2026-04-15 00:05:12 pid:596687 Workerman[server.php] stopping ...
+2026-04-15 00:05:12 pid:596687 Workerman[server.php] has been stopped

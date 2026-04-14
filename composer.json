@@ -1,0 +1,20 @@
+{
+    "name": "php-socketio/server",
+    "description": "Socket.IO v4 compatible server based on Workerman",
+    "type": "project",
+    "require": {
+        "workerman/workerman": "^4.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "PhpSocketIO\\": "src/"
+        }
+    },
+    "scripts": {
+        "start": "php server.php start",
+        "start-daemon": "php server.php start -d",
+        "stop": "php server.php stop",
+        "restart": "php server.php restart",
+        "status": "php server.php status"
+    }
+}
