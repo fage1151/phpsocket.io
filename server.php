@@ -57,7 +57,15 @@ $io->on('connection', function ($socket) use ($io) {
             return ['status' => 'ok', 'data' => $msg];
         }
     });
-    echo "[socket] ack事件监听器注册完成\n";
+
+    // ACK消息事件处理器
+    $socket->on('reqAck', function ($msg) use ($socket) {
+            echo "[/] reqAck事件触发，接收消息: {$msg}\n";
+            $socket->emitWithAck('ackResponse', 'response', function($userdata){
+                echo "收到ACK\n";
+            });
+            return ['status' => 'ok', 'data' => $msg];
+    });
 
 
     // ACK消息事件处理器

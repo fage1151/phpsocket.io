@@ -353,25 +353,8 @@ class HttpRequestHandler
             $session->isWs = true;
             $session->connection = $connection;
             
-            // 发送HTTP WebSocket升级握手响应
-            $handshakeResponse = $this->generateWebSocketHandshakeResponse($req->header('sec-websocket-key'));
-            $connection->send($handshakeResponse, true);
-            // blob or arraybuffer
-            if (empty($connection->websocketType)) {
-                $connection->websocketType = "\x81";
-            }
-            // 设置workerman协议为WebSocket
-            $connection->protocol = \Workerman\Protocols\Websocket::class;
-            $connection->context->websocketHandshake = true;
-                        // Websocket data buffer.
-            $connection->context->websocketDataBuffer = '';
-            // Current websocket frame length.
-            $connection->context->websocketCurrentFrameLength = 0;
-            // Current websocket frame data.
-            $connection->context->websocketCurrentFrameBuffer = '';
-            // 设置连接属性
-            $connection->sid = $sid;
-            $connection->isWs = true;
+            // 执行WebSocket握手
+            $this->performWebSocketHandshake($connection, $req, $sid);
             
             // 延迟发送Engine.IO握手响应（确保WebSocket协议升级完成）
             $self = $this;
@@ -385,6 +368,32 @@ class HttpRequestHandler
             echo "[error] Failed to handle direct WebSocket handshake: " . $e->getMessage() . "\n";
             $connection->close();
         }
+    }
+    
+    /**
+     * 执行WebSocket握手
+     */
+    private function performWebSocketHandshake(\Workerman\Connection\TcpConnection $connection, $req, string $sid): void
+    {
+        // 发送HTTP WebSocket升级握手响应
+        $handshakeResponse = $this->generateWebSocketHandshakeResponse($req->header('sec-websocket-key'));
+        $connection->send($handshakeResponse, true);
+        // blob or arraybuffer
+        if (empty($connection->websocketType)) {
+            $connection->websocketType = "\x81";
+        }
+        // 设置workerman协议为WebSocket
+        $connection->protocol = \Workerman\Protocols\Websocket::class;
+        $connection->context->websocketHandshake = true;
+                    // Websocket data buffer.
+        $connection->context->websocketDataBuffer = '';
+        // Current websocket frame length.
+        $connection->context->websocketCurrentFrameLength = 0;
+        // Current websocket frame data.
+        $connection->context->websocketCurrentFrameBuffer = '';
+        // 设置连接属性
+        $connection->sid = $sid;
+        $connection->isWs = true;
     }
 
 
@@ -441,22 +450,9 @@ class HttpRequestHandler
         $session->connection = $connection;
         $session->transport = 'websocket';
 
-        // 发送握手完成消息, workerman自动处理websocket协议
-        $handshakeResponse = $this->generateWebSocketHandshakeResponse($req->header('sec-websocket-key'));
-        $connection->send($handshakeResponse, true);
-        // blob or arraybuffer
-        if (empty($connection->websocketType)) {
-            $connection->websocketType = "\x81";
-        }
-        // workerman自动处理websocket协议
-        $connection->protocol = \Workerman\Protocols\Websocket::class;
-        $connection->context->websocketHandshake = true;
-            // Websocket data buffer.
-        $connection->context->websocketDataBuffer = '';
-            // Current websocket frame length.
-        $connection->context->websocketCurrentFrameLength = 0;
-            // Current websocket frame data.
-        $connection->context->websocketCurrentFrameBuffer = '';
+        // 执行WebSocket握手
+        $this->performWebSocketHandshake($connection, $req, $sid);
+        
         // 清除轮询队列并升级到WebSocket
         $session->flush();
         echo "[upgrade] session upgraded to WebSocket: {$sid}\n";

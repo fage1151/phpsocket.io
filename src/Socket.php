@@ -151,7 +151,24 @@ class Socket
      */
     private function buildPacket(string $prefix, string $socketIOPacket): string
     {
-        return $prefix . ($this->namespace !== '/' ? $this->namespace . ',' : '') . $socketIOPacket;
+        $namespacePart = $this->namespace !== '/' ? $this->namespace . ',' : '';
+        
+        // 检查是否包含ack ID（最后一个参数是否为数字）
+        $data = json_decode($socketIOPacket, true);
+        if (is_array($data) && count($data) > 1) {
+            $lastArg = end($data);
+            if (is_numeric($lastArg)) {
+                $ackId = $lastArg;
+                // 移除ack ID从数据中
+                array_pop($data);
+                $socketIOPacket = json_encode($data);
+                // 构建带ack ID的格式：42/chat,2["ackResponse","ok"]
+                return $prefix . $namespacePart . $ackId . $socketIOPacket;
+            }
+        }
+        
+        // 普通事件格式
+        return $prefix . $namespacePart . $socketIOPacket;
     }
     
     /**
