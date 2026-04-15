@@ -167,20 +167,14 @@ class HttpRequestHandler
      */
     private function handleBinaryData(Session $session, string $data): void
     {
-        echo "[binary] starting binary data processing for sid: {$session->sid}\n";
-        
         // 检查session是否有等待的占位符包
         if ($session->pendingBinaryPlaceholder !== null && $session->pendingBinaryCount > 0) {
             // 收集二进制附件
             $attachmentIndex = count($session->pendingBinaryAttachments);
             $session->pendingBinaryAttachments[$attachmentIndex] = $data;
             
-            echo "[binary] collected attachment #{$attachmentIndex} (total " . count($session->pendingBinaryAttachments) . "/{$session->pendingBinaryCount})\n";
-            
             // 检查是否所有附件都已收到
             if (count($session->pendingBinaryAttachments) >= $session->pendingBinaryCount) {
-                echo "[binary] all binary attachments collected, processing...\n";
-                
                 // 合并处理所有附件
                 $this->combineAllAttachments($session);
                 
@@ -190,18 +184,16 @@ class HttpRequestHandler
                 $session->pendingBinaryCount = 0;
             }
         } else {
-            // 没有占位符包，检查是否有上一条消息是占位符（时序问题）
-            echo "[binary] no pending placeholder, checking for recent placeholder...\n";
-            
-            // 临时处理：直接作为独立二进制数据处理，或尝试寻找可能的占位符
-            // 这里可以扩展为超时机制处理
-            echo "[binary] binary data received without placeholder, storing as pending attachment #0\n";
-            
-            // 先存储二进制数据
+            // 没有占位符包，作为独立二进制数据处理
+            // 存储二进制数据并设置超时清理
             $session->pendingBinaryAttachments[0] = $data;
             
-            // 给客户端一小段时间发送占位符包（实际生产中应该有更好的机制）
-            echo "[binary] waiting for placeholder packet to arrive...\n";
+            // 设置超时清理，避免内存泄漏
+            \Workerman\Timer::add(5, function() use ($session) {
+                if (!empty($session->pendingBinaryAttachments) && $session->pendingBinaryCount === 0) {
+                    $session->pendingBinaryAttachments = [];
+                }
+            }, [], false);
         }
     }
     

@@ -1,8 +1,3 @@
-
-
-Based on the code map provided, I have a comprehensive understanding of this PHP Socket.IO project. Let me create a detailed README:
-
-```markdown
 # PHPSocket.IO
 
 [Socket.IO](https://socket.io) 的 PHP 服务器实现，支持 WebSocket 和 Long-Polling 传输，兼容 Socket.IO 协议 v4。
@@ -20,7 +15,7 @@ Based on the code map provided, I have a comprehensive understanding of this PHP
 
 ## 系统要求
 
-- PHP >= 7.4
+- PHP >= 8.0
 - [workerman/workerman](https://github.com/walkerman/workerman) >= 4.0
 - Redis 扩展（集群模式需要）
 
@@ -32,8 +27,80 @@ Based on the code map provided, I have a comprehensive understanding of this PHP
 composer require phpsocketio/server
 ```
 
+## 项目结构
+
+```
+├── src/                # 核心源码目录
+│   ├── AdapterInterface.php    # 适配器接口
+│   ├── ClientSocket.php        # 客户端Socket类
+│   ├── ClusterAdapter.php      # 集群适配器
+│   ├── EngineIOHandler.php     # Engine.IO协议处理器
+│   ├── EventHandler.php        # 事件处理器
+│   ├── HttpRequestHandler.php  # HTTP请求处理器
+│   ├── MiddlewareHandler.php   # 中间件处理器
+│   ├── PacketParser.php        # 数据包解析器
+│   ├── PollingHandler.php      # 轮询处理器
+│   ├── RoomManager.php         # 房间管理器
+│   ├── ServerManager.php       # 服务器管理器
+│   ├── Session.php             # 会话管理
+│   ├── Socket.php              # Socket类
+│   ├── SocketIOServer.php      # Socket.IO服务器主类
+│   └── SocketIOV4Parser.php    # Socket.IO v4协议解析器
+├── server.php          # 服务器启动脚本
+├── index.html          # 客户端示例
+├── composer.json       # Composer配置文件
+├── composer.lock       # Composer依赖锁定文件
+├── README.md           # 项目说明文档
+├── README.en.md        # 英文说明文档
+├── USAGE.md            # 使用文档
+└── LICENSE             # 许可证文件
+```
+
+## 核心文件说明
+
+- **src/SocketIOServer.php**: Socket.IO服务器主类，负责处理连接和事件分发
+- **src/EventHandler.php**: 事件处理器，负责处理各种Socket.IO事件
+- **src/HttpRequestHandler.php**: HTTP请求处理器，处理HTTP轮询和WebSocket握手
+- **src/EngineIOHandler.php**: Engine.IO协议处理器，处理底层传输协议
+- **src/Session.php**: 会话管理，管理客户端会话状态
+- **src/Socket.php**: Socket类，封装客户端连接接口
+- **src/RoomManager.php**: 房间管理器，处理房间相关操作
+- **src/PacketParser.php**: 数据包解析器，解析Socket.IO数据包
+
 ## 快速开始
 
 ### 基本用法
 
 ```php
+use PhpSocketIO\SocketIOServer;
+
+// 创建Socket.IO服务器实例
+$io = new SocketIOServer('0.0.0.0:8088', [
+    'pingInterval' => 25000,  // 心跳间隔（毫秒）
+    'pingTimeout'  => 20000,  // 心跳超时（毫秒）
+    'maxPayload'   => 10485760, // 最大负载（字节）
+]);
+
+// 连接事件处理
+$io->on('connection', function ($socket) use ($io) {
+    // 发送欢迎消息
+    $socket->emit('welcome', 'Welcome to Socket.IO server!');
+    
+    // 聊天消息处理
+    $socket->on('chat message', function ($msg) use ($socket) {
+        $socket->broadcast->emit('chat message', $msg);
+    });
+    
+    // 断开连接处理
+    $socket->on('disconnect', function () use ($socket) {
+        // 清理逻辑
+    });
+});
+
+// 启动服务器
+Worker::runAll();
+```
+
+## 更多信息
+
+详细使用说明请参考 [USAGE.md](USAGE.md) 文件。

@@ -207,6 +207,17 @@ class Session
             self::$cache = $sessions;
         }
     }
+    
+    /**
+     * 定期清理过期会话和缓存
+     */
+    public static function cleanup(): void
+    {
+        // 清理过期会话
+        self::cleanupOldestSessions(100);
+        // 清理缓存
+        self::cleanupCache();
+    }
 
     /**
      * 向指定会话发送消息 - 智能处理单机和集群模式

@@ -236,31 +236,36 @@ class SocketIOServer
      */
     private function handleSocketIOMessage(string $message, $connection, $session): void
     {
-        // 解析Socket.IO数据包并处理
-        $packet = PacketParser::parseSocketIOPacket($message) ?: null;
-        if (!$packet) {
-            return;
+        try {
+            // 解析Socket.IO数据包并处理
+            $packet = PacketParser::parseSocketIOPacket($message) ?: null;
+            if (!$packet) {
+                return;
+            }
+            
+            $namespace = $packet['namespace'] ?? '/';
+            $type = $packet['type'];
+            $data = $packet['data'] ?? [];
+            
+            // 根据包类型处理
+            match ($type) {
+                'CONNECT' => $this->handleConnectPacket($connection, $session, $namespace, $data),
+                'DISCONNECT' => $this->handleDisconnectPacket($connection, $session, $namespace),
+                'EVENT', 'BINARY_EVENT' => $this->handleEventPacket(
+                    $connection, 
+                    $session, 
+                    $namespace, 
+                    $packet['event'] ?? 'unknown',
+                    $packet['args'] ?? (is_array($data) ? $data : [$data]),
+                    $packet['id'] ?? null
+                ),
+                'ACK', 'BINARY_ACK' => $this->handleAckPacket($connection, $session, $namespace, $data),
+                'ERROR' => $this->handleErrorPacket($connection, $session, $namespace, $data),
+            };
+        } catch (\Exception $e) {
+            echo "[error] 处理Socket.IO消息异常: " . $e->getMessage() . "\n";
+            // 可以在这里添加更多错误处理逻辑，如记录日志等
         }
-        
-        $namespace = $packet['namespace'] ?? '/';
-        $type = $packet['type'];
-        $data = $packet['data'] ?? [];
-        
-        // 根据包类型处理
-        match ($type) {
-            'CONNECT' => $this->handleConnectPacket($connection, $session, $namespace, $data),
-            'DISCONNECT' => $this->handleDisconnectPacket($connection, $session, $namespace),
-            'EVENT', 'BINARY_EVENT' => $this->handleEventPacket(
-                $connection, 
-                $session, 
-                $namespace, 
-                $packet['event'] ?? 'unknown',
-                $packet['args'] ?? (is_array($data) ? $data : [$data]),
-                $packet['id'] ?? null
-            ),
-            'ACK', 'BINARY_ACK' => $this->handleAckPacket($connection, $session, $namespace, $data),
-            'ERROR' => $this->handleErrorPacket($connection, $session, $namespace, $data),
-        };
     }
     
     /**
@@ -347,23 +352,28 @@ class SocketIOServer
      */
     private function handleEventPacket($connection, $session, string $namespace, string $eventName, array $eventArgs = [], ?int $ackId = null): void
     {
-        if (empty($eventName)) {
-            return;
-        }
+        try {
+            if (empty($eventName)) {
+                return;
+            }
 
-        // 获取或创建Socket实例
-        $sessionKey = "{$session->sid}:{$namespace}";
-        $socket = $this->sessionSocketMap[$sessionKey] ??= new Socket($session->sid, $namespace, $this);
-        
-        // 确保Session对象包含connection属性并同步WebSocket状态
-        if ($session->connection = $connection) {
-            $session->transport = 'websocket';
-            $session->isWs = true;
-        }
-        
-        // 处理事件
-        if (!$this->eventHandler->triggerEventWithAck($session, $namespace, $eventName, $eventArgs, $ackId)) {
-            $this->processEventHandlers($session, $namespace, $eventName, $eventArgs, $socket, $ackId);
+            // 获取或创建Socket实例
+            $sessionKey = "{$session->sid}:{$namespace}";
+            $socket = $this->sessionSocketMap[$sessionKey] ??= new Socket($session->sid, $namespace, $this);
+            
+            // 确保Session对象包含connection属性并同步WebSocket状态
+            if ($session->connection = $connection) {
+                $session->transport = 'websocket';
+                $session->isWs = true;
+            }
+            
+            // 处理事件
+            if (!$this->eventHandler->triggerEventWithAck($session, $namespace, $eventName, $eventArgs, $ackId)) {
+                $this->processEventHandlers($session, $namespace, $eventName, $eventArgs, $socket, $ackId);
+            }
+        } catch (\Exception $e) {
+            echo "[error] 处理事件包异常: " . $e->getMessage() . "\n";
+            // 可以在这里添加更多错误处理逻辑，如记录日志等
         }
     }
     
@@ -383,16 +393,19 @@ class SocketIOServer
     private function processEventHandlers($session, $namespace, $eventName, $eventArgs, $socket, $ackId = null)
     {
         try {
-            echo "[socketio v4] 处理事件: {$namespace}::{$eventName}, ackId=" . ($ackId ?? 'null') . "\n";
-            
             // 检查Socket实例级别的事件处理器（通过$socket->on注册的）
             $foundHandler = false;
+            $handler = null;
             
             // 首先检查Socket实例级别的专用处理器
             if ($socket->hasEventHandler($eventName)) {
                 $handler = $socket->getEventHandler($eventName);
-                echo "[socketio v4] 找到Socket实例专用事件处理器: {$namespace}::{$eventName}\n";
-                
+            } else if (isset($this->eventHandler->namespaceHandlers[$namespace]['events'][$eventName])) {
+                // 后备：通过EventHandler获取该命名空间的事件处理器
+                $handler = $this->eventHandler->namespaceHandlers[$namespace]['events'][$eventName];
+            }
+            
+            if ($handler) {
                 // 构建参数（Socket实例只接收数据参数）
                 $callArgs = EventHandler::buildHandlerArguments($handler, [
                     'id' => $session->sid,
@@ -405,91 +418,27 @@ class SocketIOServer
                 if ($ackId !== null) {
                     $callArgs[] = function($data) use ($session, $namespace, $ackId) {
                         // 发送ACK响应
-                        $eventHandler = $this->eventHandler;
-                        $socket = [
+                        $this->eventHandler->sendAck([
                             'id' => $session->sid,
                             'session' => $session,
                             'namespace' => $namespace
-                        ];
-                        $eventHandler->sendAck($socket, $namespace, $ackId, $data);
+                        ], $namespace, $ackId, $data);
                     };
                 }
                 
                 // 执行事件处理器
-                echo "[socketio v4] 执行Socket实例专用处理器...\n";
                 $result = call_user_func_array($handler, $callArgs);
                 
                 // 如果有ACK ID且处理器返回了结果，发送ACK响应
                 if ($ackId !== null && $result !== null) {
-                    $eventHandler = $this->eventHandler;
-                    $socket = [
+                    $this->eventHandler->sendAck([
                         'id' => $session->sid,
                         'session' => $session,
                         'namespace' => $namespace
-                    ];
-                    $eventHandler->sendAck($socket, $namespace, $ackId, $result);
+                    ], $namespace, $ackId, $result);
                 }
                 
                 $foundHandler = true;
-                echo "[socketio v4] Socket实例专用处理器执行成功: {$namespace}::{$eventName}\n";
-                
-            } else if (isset($this->eventHandler->namespaceHandlers[$namespace]['events'][$eventName])) {
-                // 后备：通过EventHandler获取该命名空间的事件处理器
-                $handler = $this->eventHandler->namespaceHandlers[$namespace]['events'][$eventName];
-                echo "[socketio v4] 找到EventHandler级别事件处理器: {$namespace}::{$eventName}\n";
-                
-                // 构建参数
-                $callArgs = EventHandler::buildHandlerArguments($handler, [
-                    'id' => $session->sid,
-                    'session' => $session,
-                    'namespace' => $namespace,
-                    'socket' => $socket
-                ], $eventArgs, $namespace);
-                
-                // 执行事件处理器
-                echo "[socketio v4] 执行EventHandler级别处理器...\n";
-                $result = call_user_func_array($handler, $callArgs);
-                
-                // 如果有ACK ID且处理器返回了结果，发送ACK响应
-                if ($ackId !== null && $result !== null) {
-                    $eventHandler = $this->eventHandler;
-                    $socket = [
-                        'id' => $session->sid,
-                        'session' => $session,
-                        'namespace' => $namespace
-                    ];
-                    $eventHandler->sendAck($socket, $namespace, $ackId, $result);
-                }
-                
-                $foundHandler = true;
-                echo "[socketio v4] EventHandler级别处理器执行成功: {$namespace}::{$eventName}\n";
-            } else {
-                echo "[socketio v4] 未找到任何事件处理器: {$namespace}::{$eventName}\n";
-                echo "[socketio v4] 调试信息 - Socket实例ID: " . ($socket->id ?? 'null') . "\n";
-                echo "[socketio v4] 调试信息 - 命名空间: " . $namespace . "\n";
-                echo "[socketio v4] 调试信息 - 事件名称: " . $eventName . "\n";
-                echo "[socketio v4] 调试信息 - Socket实例类型: " . get_class($socket) . "\n";
-                
-                // 检查Socket实例的方法是否存在
-                if (!method_exists($socket, 'hasEventHandler')) {
-                    echo "[socketio v4] 错误: Socket实例缺少hasEventHandler方法\n";
-                }
-                
-                // 尝试直接访问eventHandlers属性
-                if (property_exists($socket, 'eventHandlers')) {
-                    $handlerCount = count($socket->eventHandlers ?? []);
-                    echo "[socketio v4] 调试信息 - 事件处理器数量: " . $handlerCount . "\n";
-                    echo "[socketio v4] 调试信息 - 事件列表: " . implode(', ', array_keys($socket->eventHandlers ?? [])) . "\n";
-                }
-                
-                // 关键：检查是否可以从Session中获取原始Socket实例的事件处理器
-                echo "[socketio v4] 正在检查Session级别的事件处理器缓存...\n";
-                
-                // 后备方案：直接检查EventHandler是否已正确注册
-                if (isset($this->eventHandler->namespaceHandlers[$namespace]['events'])) {
-                    $events = $this->eventHandler->namespaceHandlers[$namespace]['events'];
-                    echo "[socketio v4] EventHandler级别注册的事件: " . implode(', ', array_keys($events)) . "\n";
-                }
             }
             
             return $foundHandler;
@@ -582,15 +531,20 @@ class SocketIOServer
             }
         }
         
+        // 构建消息包一次，避免重复构建
+        $socket = new Socket('', '/', $this);
+        $messagePacket = $socket->buildEventPacket($event, $args);
+        
         // 向所有会话发送消息
-        foreach (Session::all() as $sid => $session) {
+        $activeSessions = Session::all();
+        foreach ($activeSessions as $sid => $session) {
             // 跳过排除的socket
             if ($excludeSocket && $sid === $excludeSocket->getId()) {
                 continue;
             }
             
-            // 创建Socket实例并发送消息
-            (new Socket($sid, '/', $this))->emit($event, ...$args);
+            // 直接发送消息包，避免重复创建Socket实例
+            $session->send($messagePacket);
         }
         
         return $this;

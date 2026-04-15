@@ -66,6 +66,11 @@ class Socket
             throw new \InvalidArgumentException("事件名称不能为空");
         }
         
+        // 验证事件名称格式，只允许字母、数字、下划线和点
+        if (!preg_match('/^[a-zA-Z0-9_\.]+$/', $event)) {
+            throw new \InvalidArgumentException("事件名称格式无效");
+        }
+        
         // 检查是否包含二进制数据并发送
         return $this->hasBinaryData($args)
             ? $this->emitBinary($event, ...$args)
@@ -77,11 +82,19 @@ class Socket
      */
     private function sendStandardEvent(string $event, mixed ...$args): self
     {
-        $eventData = array_merge([$event], $args);
-        $socketIOPacket = json_encode($eventData);
-        $packetData = $this->buildPacket('42', $socketIOPacket);
+        $packetData = $this->buildEventPacket($event, $args);
         $this->send($packetData, $event);
         return $this;
+    }
+    
+    /**
+     * 构建事件消息包
+     */
+    public function buildEventPacket(string $event, array $args): string
+    {
+        $eventData = array_merge([$event], $args);
+        $socketIOPacket = json_encode($eventData);
+        return $this->buildPacket('42', $socketIOPacket);
     }
 
     /**

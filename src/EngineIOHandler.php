@@ -329,28 +329,28 @@ class EngineIOHandler
      */
     public function startHeartbeat()
     {
-        // 每2秒检查一次会话状态，确保及时发送ping和处理超时
-        $checkInterval = 2;
+        // 每5秒检查一次会话状态，减少不必要的检查
+        $checkInterval = 5;
+        $cleanupCounter = 0;
         
         // 使用Workerman的Timer定时执行心跳检查
-        \Workerman\Timer::add($checkInterval, function() {
+        \Workerman\Timer::add($checkInterval, function() use (&$cleanupCounter) {
             $sessions = Session::all();
-            $pingSent = 0;
-            $timeoutCleaned = 0;
             
             foreach ($sessions as $session) {
                 // 批量处理每个会话的心跳
                 $result = $this->processSessionHeartbeat($session, $this->pingInterval, $this->pingTimeout);
                 
-                if ($result['status'] === 'ping-sent') {
-                    $pingSent++;
-                }
-                
                 // 如果会话超时，进行清理
                 if ($result['status'] === 'timeout') {
                     $this->cleanupSession($result['session']);
-                    $timeoutCleaned++;
                 }
+            }
+            
+            // 每30秒（6个周期）执行一次会话和缓存清理
+            if (++$cleanupCounter >= 6) {
+                Session::cleanup();
+                $cleanupCounter = 0;
             }
         });
     }
