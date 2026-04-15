@@ -7,21 +7,21 @@ namespace PhpSocketIO;
  */
 class ServerManager
 {
-    private $pingInterval      = 25000;
-    private $pingTimeout       = 20000;
-    private $adapter           = null;
-    private $clusterEnabled    = false;
-    private $serverOptions     = [];
-    private $isRunning         = false;
-    private $cors              = null; // CORS配置
+    private int $pingInterval      = 25000;
+    private int $pingTimeout       = 20000;
+    private ?AdapterInterface $adapter = null;
+    private bool $clusterEnabled   = false;
+    private array $serverOptions   = [];
+    private bool $isRunning        = false;
+    private $cors                  = null; // CORS配置
 
     /**
      * 设置服务器配置
      */
     public function setConfig(array $config): void
     {
-        $this->pingInterval = isset($config['pingInterval']) ? $config['pingInterval'] : 25000;
-        $this->pingTimeout  = isset($config['pingTimeout'])  ? $config['pingTimeout']  : 20000;
+        $this->pingInterval = $config['pingInterval'] ?? 25000;
+        $this->pingTimeout  = $config['pingTimeout']  ?? 20000;
         $this->serverOptions = $config;
         
         // 设置CORS配置
@@ -59,7 +59,7 @@ class ServerManager
     /**
      * 获取集群适配器实例
      */
-    public function getAdapter()
+    public function getAdapter(): ?AdapterInterface
     {
         return $this->clusterEnabled ? $this->adapter : null;
     }
@@ -163,7 +163,6 @@ class ServerManager
             'pingTimeout' => $this->pingTimeout,
             'sessionCount' => $sessionCount,
             'adapter' => $this->adapter ? get_class($this->adapter) : 'None',
-            'activeSessions' => array_keys($sessions),
             'configErrors' => $this->validateConfig()
         ];
     }

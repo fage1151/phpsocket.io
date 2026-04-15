@@ -605,20 +605,6 @@ class EventHandler
             }
         }
         
-        // 检查server.php常用事件类型
-        $serverPhpEvents = ['message', 'chat message', 'disconnect', 'connection'];
-        if (in_array($eventName, $serverPhpEvents)) {
-            // 检查并执行EventHandler级别的处理器
-            if ($this->hasEventHandler($namespace, $eventName)) {
-                $handler = $this->namespaceHandlers[$namespace]['events'][$eventName];
-                $callArgs = self::buildHandlerArguments($handler, $socket, $eventData, $namespace);
-                call_user_func_array($handler, $callArgs);
-            }
-            
-            // 返回false让事件继续传递给Socket实例处理器
-            return false;
-        }
-        
         return false;
     }
     

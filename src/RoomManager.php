@@ -7,28 +7,29 @@ namespace PhpSocketIO;
  */
 class RoomManager
 {
-    private $rooms = []; // 房间列表，key为房间名，value为Session ID数组
-    private $sessionRooms = []; // 会话的房间映射，key为Session ID，value为房间名数组
+    private $rooms = []; // 房间列表，key为房间名，value为Session ID的关联数组（使用关联数组提高查找效率）
+    private $sessionRooms = []; // 会话的房间映射，key为Session ID，value为房间名的关联数组
 
     /**
      * 加入房间
      */
     public function joinRoom(string $sid, string $room): bool
     {
+        // 使用关联数组存储房间成员，提高查找效率
         if (!isset($this->rooms[$room])) {
             $this->rooms[$room] = [];
         }
         
-        if (!in_array($sid, $this->rooms[$room])) {
-            $this->rooms[$room][] = $sid;
+        if (!isset($this->rooms[$room][$sid])) {
+            $this->rooms[$room][$sid] = true;
         }
         
         if (!isset($this->sessionRooms[$sid])) {
             $this->sessionRooms[$sid] = [];
         }
         
-        if (!in_array($room, $this->sessionRooms[$sid])) {
-            $this->sessionRooms[$sid][] = $room;
+        if (!isset($this->sessionRooms[$sid][$room])) {
+            $this->sessionRooms[$sid][$room] = true;
         }
         
         return true;
@@ -54,14 +55,14 @@ class RoomManager
     public function leaveRoom(string $sid, string $room): bool
     {
         if (isset($this->rooms[$room])) {
-            $this->rooms[$room] = array_diff($this->rooms[$room], [$sid]);
+            unset($this->rooms[$room][$sid]);
             if (empty($this->rooms[$room])) {
                 unset($this->rooms[$room]);
             }
         }
         
         if (isset($this->sessionRooms[$sid])) {
-            $this->sessionRooms[$sid] = array_diff($this->sessionRooms[$sid], [$room]);
+            unset($this->sessionRooms[$sid][$room]);
             if (empty($this->sessionRooms[$sid])) {
                 unset($this->sessionRooms[$sid]);
             }
@@ -90,9 +91,9 @@ class RoomManager
     public function leaveAllRooms(string $sid): bool
     {
         if (isset($this->sessionRooms[$sid])) {
-            foreach ($this->sessionRooms[$sid] as $room) {
+            foreach (array_keys($this->sessionRooms[$sid]) as $room) {
                 if (isset($this->rooms[$room])) {
-                    $this->rooms[$room] = array_diff($this->rooms[$room], [$sid]);
+                    unset($this->rooms[$room][$sid]);
                     if (empty($this->rooms[$room])) {
                         unset($this->rooms[$room]);
                     }
@@ -109,7 +110,7 @@ class RoomManager
      */
     public function getRoomMembers(string $room): array
     {
-        return $this->rooms[$room] ?? [];
+        return array_keys($this->rooms[$room] ?? []);
     }
 
     /**
@@ -117,7 +118,7 @@ class RoomManager
      */
     public function getSessionRooms(string $sid): array
     {
-        return $this->sessionRooms[$sid] ?? [];
+        return array_keys($this->sessionRooms[$sid] ?? []);
     }
 
     /**
@@ -125,7 +126,7 @@ class RoomManager
      */
     public function isInRoom(string $sid, string $room): bool
     {
-        return isset($this->sessionRooms[$sid]) ? in_array($room, $this->sessionRooms[$sid]) : false;
+        return isset($this->sessionRooms[$sid][$room]);
     }
 
     /**
@@ -159,5 +160,43 @@ class RoomManager
     public function removeSession(string $sid): void
     {
         $this->leaveAllRooms($sid);
+    }
+
+    /**
+     * 获取房间数量
+     */
+    public function getRoomCount(): int
+    {
+        return count($this->rooms);
+    }
+
+    /**
+     * 获取会话数量
+     */
+    public function getSessionCount(): int
+    {
+        return count($this->sessionRooms);
+    }
+
+    /**
+     * 批量加入多个房间
+     */
+    public function joinRooms(string $sid, array $rooms): bool
+    {
+        foreach ($rooms as $room) {
+            $this->joinRoom($sid, $room);
+        }
+        return true;
+    }
+
+    /**
+     * 批量离开多个房间
+     */
+    public function leaveRooms(string $sid, array $rooms): bool
+    {
+        foreach ($rooms as $room) {
+            $this->leaveRoom($sid, $room);
+        }
+        return true;
     }
 }

@@ -11,28 +11,30 @@ use Exception;
 class Session
 {
     // 会话属性
-    public $sid;              // 会话ID (24字符十六进制)
-    public $transport    = 'polling'; // 传输类型: polling|websocket
+    public string $sid;              // 会话ID (24字符十六进制)
+    public string $transport    = 'polling'; // 传输类型: polling|websocket
     public $connection   = null;      // 连接对象
-    public $pollingQueue = [];        // 轮询消息队列
-    public $namespaces   = [];        // 命名空间授权状态
-    public $lastPong;                 // 最后心跳时间
-    public $lastPing;                 // 最后发送ping时间
-    public $isWs         = false;     // 是否WebSocket连接
-    public $createdAt;                // 创建时间戳
-    public $messageCount = 0;         // 消息计数
-    public $errorCount   = 0;         // 错误计数
-    public $ackCallbacks = [];        // ACK回调函数存储
+    public array $pollingQueue = [];        // 轮询消息队列
+    public array $namespaces   = [];        // 命名空间授权状态
+    public int $lastPong;                 // 最后心跳时间
+    public int $lastPing;                 // 最后发送ping时间
+    public bool $isWs         = false;     // 是否WebSocket连接
+    public int $createdAt;                // 创建时间戳
+    public int $messageCount = 0;         // 消息计数
+    public int $errorCount   = 0;         // 错误计数
+    public array $ackCallbacks = [];        // ACK回调函数存储
     public $handshake    = null;      // 握手信息
-    public $data         = [];        // 任意数据对象 (v4.0.0+)
-    public $pendingBinaryAttachments = []; // 待处理的二进制附件
+    public array $data         = [];        // 任意数据对象 (v4.0.0+)
+    public array $pendingBinaryAttachments = []; // 待处理的二进制附件
     public $pendingBinaryPlaceholder = null; // 待处理的二进制占位符包
-    public $pendingBinaryCount = 0;  // 需要等待的二进制附件数量
+    public int $pendingBinaryCount = 0;  // 需要等待的二进制附件数量
 
     // 静态会话管理
-    private static $sessions    = [];  // 活跃会话池
-    private static $maxSessions = 10000; // 最大会话限制，避免内存泄漏
-    private static $sessionTtl  = 86400; // 会话过期时间(24小时)
+    private static array $sessions    = [];  // 活跃会话池
+    private static int $maxSessions = 10000; // 最大会话限制，避免内存泄漏
+    private static int $sessionTtl  = 86400; // 会话过期时间(24小时)
+    private static array $cache     = [];    // 会话缓存
+    private static int $cacheSize   = 1000;  // 缓存大小限制
 
     /**
      * 创建新会话（带格式验证和内存管理）
@@ -58,6 +60,9 @@ class Session
         $this->createdAt = time();
         self::$sessions[$sid] = $this;
         
+        // 清理缓存
+        self::cleanupCache();
+        
         echo "[session] created sid={$sid} total=" . count(self::$sessions) . "\n";
     }
 
@@ -66,14 +71,14 @@ class Session
      */
     public static function get(string $sid): ?self
     {
-        static $cache = []; // 简单的静态缓存
-        if (isset($cache[$sid])) return $cache[$sid];
-        return $cache[$sid] = isset(self::$sessions[$sid]) ? self::$sessions[$sid] : null;
+        if (isset(self::$cache[$sid])) return self::$cache[$sid];
+        return self::$cache[$sid] = self::$sessions[$sid] ?? null;
     }
 
     public static function remove(string $sid): void
     {
         unset(self::$sessions[$sid]);
+        unset(self::$cache[$sid]);
     }
 
     public static function all(): array
@@ -132,7 +137,7 @@ class Session
         if ($this->isWs && $this->connection) {
             // WebSocket连接：手动控制帧类型
             // 1. 保存当前WebSocket帧类型
-            $originalType = isset($this->connection->websocketType) ? $this->connection->websocketType : "\x81";
+            $originalType = $this->connection->websocketType ?? "\x81";
             
             // 2. 切换到二进制帧类型
             $this->connection->websocketType = "\x82"; // 二进制帧
@@ -180,6 +185,7 @@ class Session
         foreach ($sessions as $sid => $session) {
             if ($session->isExpired()) {
                 unset(self::$sessions[$sid]);
+                unset(self::$cache[$sid]);
                 $cleaned++;
                 if ($cleaned >= $batchSize) break;
             }
@@ -187,6 +193,18 @@ class Session
         
         if ($cleaned > 0) {
             echo "[cleanup] removed {$cleaned} expired sessions\n";
+        }
+    }
+
+    /**
+     * 清理缓存，防止内存泄漏
+     */
+    private static function cleanupCache(): void
+    {
+        if (count(self::$cache) > self::$cacheSize) {
+            // 保留最近使用的会话
+            $sessions = array_slice(self::$cache, -self::$cacheSize, self::$cacheSize, true);
+            self::$cache = $sessions;
         }
     }
 
@@ -241,5 +259,31 @@ class Session
     public static function isSessionAvailable(string $sid): bool
     {
         return isset(self::$sessions[$sid]);
+    }
+
+    /**
+     * 清理所有会话
+     */
+    public static function clearAll(): void
+    {
+        self::$sessions = [];
+        self::$cache = [];
+        echo "[cleanup] cleared all sessions\n";
+    }
+
+    /**
+     * 获取会话数量
+     */
+    public static function getSessionCount(): int
+    {
+        return count(self::$sessions);
+    }
+
+    /**
+     * 检查会话是否活跃
+     */
+    public function isActive(): bool
+    {
+        return (time() - $this->lastPong) < self::$sessionTtl;
     }
 }

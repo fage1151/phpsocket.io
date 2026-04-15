@@ -7,9 +7,9 @@ namespace PhpSocketIO;
  */
 class PollingHandler
 {
-    private $serverManager;
-    private $engineIoHandler;
-    private $middlewareHandler;
+    private ServerManager $serverManager;
+    private EngineIOHandler $engineIoHandler;
+    private MiddlewareHandler $middlewareHandler;
 
     public function __construct(ServerManager $serverManager, EngineIOHandler $engineIoHandler, MiddlewareHandler $middlewareHandler)
     {
@@ -28,21 +28,16 @@ class PollingHandler
 
         if ($method === 'OPTIONS') {
             $this->sendHttpResponse($connection, 200, [], '');
-            $connection->close();
             return;
         }
 
-        if ($method === 'GET') {
-            if ($sid === null) {
-                $this->handlePollingNew($connection);
-            } else {
-                $this->handlePollingGet($connection, $sid);
-            }
-        } elseif ($method === 'POST') {
-            $this->handlePollingPost($connection, $sid, $req->rawBody() ?? '');
-        } else {
-            $this->sendErrorResponse($connection, 'Method not allowed');
-        }
+        match ($method) {
+            'GET' => $sid === null 
+                ? $this->handlePollingNew($connection) 
+                : $this->handlePollingGet($connection, $sid),
+            'POST' => $this->handlePollingPost($connection, $sid, $req->rawBody() ?? ''),
+            default => $this->sendErrorResponse($connection, 'Method not allowed'),
+        };
     }
 
     /**
@@ -66,18 +61,14 @@ class PollingHandler
         $this->sendHttpResponse($connection, 200, [
             'Content-Type' => 'text/plain; charset=UTF-8',
         ], $body);
-        $connection->close();
 
         $session->namespaces['/'] = [];
         
         // 触发连接事件
         $socket = ['nsp' => '/', 'id' => $session->sid];
-        $eventData = new \stdClass();
-        if ($this->engineIoHandler && method_exists($this->engineIoHandler, 'getEventHandler')) {
-            $eventHandler = $this->engineIoHandler->getEventHandler();
-            if ($eventHandler) {
-                $eventHandler->triggerConnect($socket, '/');
-            }
+        $eventHandler = $this->engineIoHandler->getEventHandler();
+        if ($eventHandler) {
+            $eventHandler->triggerConnect($socket, '/');
         }
 
         echo "[connect] polling sid={$session->sid}\n";
@@ -127,8 +118,6 @@ class PollingHandler
         } catch (\Exception $e) {
             $this->sendErrorResponse($connection, $e->getMessage());
         }
-        
-        $connection->close();
     }
 
     /**
@@ -172,19 +161,20 @@ class PollingHandler
         // 使用ServerManager中的CORS配置覆盖默认值
         $corsConfig = $this->serverManager->getCors();
         if ($corsConfig !== null) {
-            if (isset($corsConfig['origin'])) {
-                $defaultHeaders['Access-Control-Allow-Origin'] = $corsConfig['origin'];
-            }
+            $defaultHeaders['Access-Control-Allow-Origin'] = $corsConfig['origin'] ?? $defaultHeaders['Access-Control-Allow-Origin'];
+            
             if (isset($corsConfig['methods'])) {
                 $defaultHeaders['Access-Control-Allow-Methods'] = is_array($corsConfig['methods']) 
                     ? implode(',', $corsConfig['methods']) 
                     : $corsConfig['methods'];
             }
+            
             if (isset($corsConfig['allowedHeaders'])) {
                 $defaultHeaders['Access-Control-Allow-Headers'] = is_array($corsConfig['allowedHeaders']) 
                     ? implode(',', $corsConfig['allowedHeaders']) 
                     : $corsConfig['allowedHeaders'];
             }
+            
             if (isset($corsConfig['credentials']) && $corsConfig['credentials']) {
                 $defaultHeaders['Access-Control-Allow-Credentials'] = 'true';
             }
@@ -209,28 +199,5 @@ class PollingHandler
     {
         echo "[error] {$message}\n";
         $this->sendHttpResponse($connection, $code, [], $message);
-    }
-
-    /**
-     * 支持CORs跨域请求
-     */
-    private function sendCorsResponse(\Workerman\Connection\TcpConnection $connection): void
-    {
-        $this->sendHttpResponse($connection, 200, [], '');
-    }
-
-    /**
-     * 检查请求是否正常
-     */
-    public function validateRequest(array $req): bool
-    {
-        if (!isset($req['method'])) {
-            return false;
-        }
-
-        $method = strtoupper($req['method']);
-        $validMethods = ['GET', 'POST', 'OPTIONS'];
-        
-        return in_array($method, $validMethods);
     }
 }
