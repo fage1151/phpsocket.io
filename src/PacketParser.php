@@ -112,32 +112,75 @@ class PacketParser
      */
     private static function extractPacketData(array $packet, array $decoded)
     {
-        // 根据不同包类型提取数据
-        switch ($packet['type']) {
-            case 'CONNECT':
-                $packet['namespace'] = $decoded[1] ?? '/';
-                if (isset($decoded[2])) {
-                    $packet['auth'] = $decoded[2];
-                }
-                break;
-                
-            case 'DISCONNECT':
-                $packet['namespace'] = $decoded[1] ?? '/';
-                break;
-                
-            case 'EVENT':
-            case 'BINARY_EVENT':
-                self::extractEventPacketData($packet, $decoded);
-                break;
-                
-            case 'ACK':
-            case 'BINARY_ACK':
-                self::extractAckPacketData($packet, $decoded);
-                break;
-                
-            case 'CONNECT_ERROR':
-                self::extractConnectErrorPacketData($packet, $decoded);
-                break;
+        // 检查是否为关联数组格式
+        if (isset($decoded['type'])) {
+            // 处理关联数组格式
+            switch ($packet['type']) {
+                case 'CONNECT':
+                    $packet['namespace'] = $decoded['namespace'] ?? '/';
+                    if (isset($decoded['data'])) {
+                        $packet['auth'] = $decoded['data'];
+                    }
+                    break;
+                    
+                case 'DISCONNECT':
+                    $packet['namespace'] = $decoded['namespace'] ?? '/';
+                    break;
+                    
+                case 'EVENT':
+                case 'BINARY_EVENT':
+                    $packet['namespace'] = $decoded['namespace'] ?? '/';
+                    $packet['event'] = $decoded['data'][0] ?? 'unknown';
+                    $packet['data'] = array_slice($decoded['data'], 1) ?? [];
+                    if (isset($decoded['ackId'])) {
+                        $packet['id'] = $decoded['ackId'];
+                    }
+                    if (isset($decoded['binaryCount'])) {
+                        $packet['binaryCount'] = $decoded['binaryCount'];
+                    }
+                    break;
+                    
+                case 'ACK':
+                case 'BINARY_ACK':
+                    $packet['namespace'] = $decoded['namespace'] ?? '/';
+                    $packet['data'] = $decoded['data'] ?? [];
+                    if (isset($decoded['ackId'])) {
+                        $packet['id'] = $decoded['ackId'];
+                    }
+                    break;
+                    
+                case 'CONNECT_ERROR':
+                    $packet['data'] = $decoded['data'] ?? [];
+                    break;
+            }
+        } else {
+            // 处理旧的索引数组格式（向后兼容）
+            switch ($packet['type']) {
+                case 'CONNECT':
+                    $packet['namespace'] = $decoded[1] ?? '/';
+                    if (isset($decoded[2])) {
+                        $packet['auth'] = $decoded[2];
+                    }
+                    break;
+                    
+                case 'DISCONNECT':
+                    $packet['namespace'] = $decoded[1] ?? '/';
+                    break;
+                    
+                case 'EVENT':
+                case 'BINARY_EVENT':
+                    self::extractEventPacketData($packet, $decoded);
+                    break;
+                    
+                case 'ACK':
+                case 'BINARY_ACK':
+                    self::extractAckPacketData($packet, $decoded);
+                    break;
+                    
+                case 'CONNECT_ERROR':
+                    self::extractConnectErrorPacketData($packet, $decoded);
+                    break;
+            }
         }
         
         return $packet;
@@ -175,7 +218,7 @@ class PacketParser
      */
     private static function handleNamespaceEventFormat(array &$packet, array $decoded): void
     {
-        // 格式2：[type, namespace, event_name, data_args...]
+        // 格式2：[type, namespace, event_name, data_args..., ack_id?]
         $packet['namespace'] = $decoded[1];
         
         if (!isset($decoded[2]) || !is_string($decoded[2])) {
@@ -189,17 +232,25 @@ class PacketParser
         // 收集数据参数
         $dataArgs = [];
         
-        // 遍历所有元素，将所有元素都作为数据参数
+        // 遍历所有元素，将所有元素都作为数据参数，除了最后一个可能的ACK ID
         for ($i = 3; $i < count($decoded); $i++) {
             if (!isset($decoded[$i])) continue;
             
             $element = $decoded[$i];
-            // 所有元素都作为数据参数
-            $dataArgs[] = $element;
+            // 检查是否是最后一个元素且是数字（可能是ACK ID）
+            if ($i === count($decoded) - 1 && is_numeric($element)) {
+                $packet['id'] = (int)$element;
+            } else {
+                // 所有其他元素都作为数据参数
+                $dataArgs[] = $element;
+            }
         }
         
         $packet['data'] = $dataArgs;
         echo "[packet] 事件数据解析 (格式2): event={$packet['event']}, data=" . json_encode($packet['data']) . ", namespace={$packet['namespace']}" . "\n";
+        if (isset($packet['id'])) {
+            echo "[packet] 提取到ACK ID: {$packet['id']}\n";
+        }
     }
     
     /**
@@ -439,17 +490,14 @@ class PacketParser
                         // 处理命名空间、ACK ID和JSON数据
                     list($namespace, $ackId, $jsonData) = self::parseNamespaceAckAndJson($rest);
                     
-                    // 构建解码数组
-                    $decoded = [$socketTypeCode];
-                    if (is_array($jsonData) && !empty($jsonData)) {
-                        $decoded = array_merge($decoded, $jsonData);
-                    }
-                    if ($namespace !== '/') {
-                        $decoded[] = $namespace;
-                    }
-                    if ($ackId !== null) {
-                        $decoded[] = $ackId;
-                    }
+                    // 构建解码关联数组
+                    $decoded = [
+                        'type' => $socketTypeCode,
+                        'namespace' => $namespace,
+                        'data' => $jsonData,
+                        'ackId' => $ackId
+                    ];
+                    echo "[protocol] Engine.IO format packet decoded (associative): " . json_encode($decoded) . "\n";
                     // 存储二进制附件数量（如果是二进制事件）
                     if ($socketTypeCode === 5 && $binaryCount > 0) {
                         $decoded['binaryCount'] = $binaryCount;
@@ -477,20 +525,14 @@ class PacketParser
                     // 解析命名空间和JSON数据
                     list($namespace, , $jsonData) = self::parseNamespaceAckAndJson($rest);
                     
-                    // 构建解码数组
-                    $decoded = [$type];
-                    if (is_array($jsonData) && !empty($jsonData)) {
-                        $decoded = array_merge($decoded, $jsonData);
-                    }
-                    if ($namespace !== '/') {
-                        $decoded[] = $namespace;
-                    }
-                    // 存储二进制附件数量
-                    if ($type === 5 && $binaryCount > 0) {
-                        $decoded['binaryCount'] = $binaryCount;
-                    }
-                    
-                    echo "[packet] binary event packet decoded: " . json_encode($decoded) . "\n";
+                    // 构建解码关联数组
+                    $decoded = [
+                        'type' => $type,
+                        'namespace' => $namespace,
+                        'data' => $jsonData,
+                        'binaryCount' => ($type === 5 && $binaryCount > 0) ? $binaryCount : null
+                    ];
+                    echo "[packet] binary event packet decoded (associative): " . json_encode($decoded) . "\n";
                 
                 // 否则检查标准Socket.IO格式：如 "2[\"message\",\"123\"]"
                 } elseif (preg_match('/^(\\d)\\[(.*)\\]$/', $data, $matches)) {
@@ -512,13 +554,12 @@ class PacketParser
                         }
                     }
                     
-                    // 构建解码数组
-                    $decoded = [$packetType];
-                    if (is_array($jsonData) && !empty($jsonData)) {
-                        $decoded = array_merge([$packetType], $jsonData);
-                    }
-                    
-                    echo "[packet] standard format decoded: " . json_encode($decoded) . "\n";
+                    // 构建解码关联数组
+                    $decoded = [
+                        'type' => $packetType,
+                        'data' => $jsonData
+                    ];
+                    echo "[packet] standard format decoded (associative): " . json_encode($decoded) . "\n";
                     
                 } elseif (preg_match('/^(\d)\/([^,]+)\,?(.*)?$/', $data, $matches)) {
                     // 处理命名空间格式
@@ -528,34 +569,34 @@ class PacketParser
                     
                     echo "[packet] detected namespace packet: type={$type}, namespace={$namespace}, rest={$rest}\n";
                     
-                    $decoded = [$type, $namespace];
+                    // 构建解码关联数组
+                    $decoded = [
+                        'type' => $type,
+                        'namespace' => $namespace,
+                        'data' => null,
+                        'ackId' => null
+                    ];
                     
                     if (!empty($rest)) {
                         if (preg_match('/^(\d+)(\[.*\])$/', $rest, $ackMatches)) {
-                            $ackId = (int)$ackMatches[1];
+                            $decoded['ackId'] = (int)$ackMatches[1];
                             $jsonStr = $ackMatches[2];
-                            $jsonData = json_decode($jsonStr, true);
-                            if (is_array($jsonData)) {
-                                // 直接添加整个JSON数组作为事件数据
-                                $decoded = array_merge($decoded, $jsonData);
-                                // 最后添加ACK ID
-                                $decoded[] = $ackId;
-                            }
+                            $decoded['data'] = json_decode($jsonStr, true);
                         } elseif (preg_match('/^(\[.*\])$/', $rest, $jsonMatches)) {
                             $jsonStr = $jsonMatches[1];
-                            $jsonData = json_decode($jsonStr, true);
-                            if (is_array($jsonData)) {
-                                $decoded = array_merge($decoded, $jsonData);
-                            }
+                            $decoded['data'] = json_decode($jsonStr, true);
                         }
                     }
                     
-                    echo "[packet] namespace packet decoded: " . json_encode($decoded) . "\n";
+                    echo "[packet] namespace packet decoded (associative): " . json_encode($decoded) . "\n";
                     
                 } else {
                     // 降级处理
                     echo "[packet] treating as plain message: {$data}\n";
-                    $decoded = [4, $data];
+                    $decoded = [
+                        'type' => 4,
+                        'data' => $data
+                    ];
                 }
             }
         } else {
@@ -563,15 +604,16 @@ class PacketParser
             return null;
         }
         
-        // 验证解析结果 - 注意：$decoded[0] = 0 是有效的CONNECT包
-        if (!is_array($decoded) || !isset($decoded[0])) {
+        // 验证解析结果 - 注意：type=0 是有效的CONNECT包
+        if (!is_array($decoded) || (!isset($decoded[0]) && !isset($decoded['type']))) {
             echo "[packet] invalid packet structure, decoded: " . json_encode($decoded) . "\n";
             return null;
         }
         
         // 处理解码后的数据
         try {
-            $type = (int)$decoded[0];
+            // 获取类型码，支持关联数组和索引数组格式
+            $type = isset($decoded['type']) ? (int)$decoded['type'] : (int)$decoded[0];
             if (!isset(self::SOCKET_PACKET_TYPES[$type])) {
                 echo "[packet] unknown socketio type: {$type}, decoded: " . json_encode($decoded) . "\n";
                 return null;
