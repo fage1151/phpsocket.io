@@ -11,97 +11,140 @@ use Workerman\Connection\TcpConnection;
 // ========================================
 
 // 创建Socket.IO v4服务器实例
-$io = new SocketIOServer('0.0.0.0:8088', [
-    'pingInterval' => 25000,
-    'pingTimeout'  => 20000,
-]);
+try {
+    $io = new SocketIOServer('0.0.0.0:8088', [
+        'pingInterval' => 25000,
+        'pingTimeout'  => 20000,
+        'maxPayload'   => 10485760, // 10MB 最大负载
+    ]);
+} catch (Exception $e) {
+    echo "Error creating server: " . $e->getMessage() . "\n";
+    exit(1);
+}
 
 // 注册根命名空间的连接事件处理器
 $io->on('connection', function ($socket) use ($io) {
-    echo "[/] 连接: " . $socket->getId() . " transport=" . $socket->getTransport() . "\n";
-    echo "[socket] 开始注册事件监听器\n";
+    // 连接成功时发送欢迎消息
+    $socket->emit('welcome', 'Welcome to Socket.IO server!');
     
     // 聊天消息事件处理器
-    echo "[socket] 正在注册chat message事件监听器\n";
     $socket->on('chat message', function ($msg) use ($socket) {
-        echo "[/] chat message事件触发，接收消息: {$msg}\n";
         $socket->broadcast->emit('chat message', $msg);
     });
-    echo "[socket] chat message事件监听器注册完成\n";
 
     // 通用消息事件处理器
-    echo "[socket] 正在注册message事件监听器\n";
     $socket->on('message', function ($msg) use ($socket) {
-        echo "[/] message事件触发，接收消息: {$msg}\n";
         $socket->emit('message', $msg);
     });
-    echo "[socket] message事件监听器注册完成\n";
 
-    // 通用消息事件处理器
-    echo "[socket] 正在注册customEvent事件监听器\n";
-    $socket->on('customEvent', function ($msg) use ($socket, $io) {
-        echo "[/] customEvent事件触发，接收消息: {$msg}\n";
-        $io->emit('message', $msg);
+    // 自定义事件处理器
+    $socket->on('customEvent', function ($msg = null) use ($io) {
+        // 向所有客户端群发消息
+        $io->of('/chat')->emit('customEvent', $msg);
     });
-    echo "[socket] message事件监听器注册完成\n";
     
     // ACK消息事件处理器
     $socket->on('ack', function ($msg, $callback) use ($socket) {
-        echo "[/] ack事件触发，接收消息: {$msg}\n";
-        // 检查是否存在回调函数
         if (is_callable($callback)) {
-            echo "[/] 发送ACK响应: status=ok, data={$msg}\n";
             $callback(['status' => 'ok', 'data' => $msg]);
-        } else {
-            echo "[/] 没有提供回调函数，返回默认响应\n";
-            return ['status' => 'ok', 'data' => $msg];
         }
+        return ['status' => 'ok', 'data' => $msg];
     });
 
-    // ACK消息事件处理器
+    // 服务器ACK测试
     $socket->on('reqAck', function ($msg) use ($socket) {
-            echo "[/] reqAck事件触发，接收消息: {$msg}\n";
-            $socket->emitWithAck('ackResponse', 'response', function($userdata){
-                echo "收到ACK\n";
-            });
-            return ['status' => 'ok', 'data' => $msg];
+        $socket->emitWithAck('ackResponse', 'Server ACK response', function($userdata){
+            // 处理客户端的ACK回调
+        });
     });
 
-
-    // ACK消息事件处理器
+    // 二进制数据处理
     $socket->on('buffer', function ($msg) use ($socket) {
-        echo "[/] buffer事件触发，接收消息: {$msg}\n";
-        // 检查是否存在回调函数
-            echo "[/] 发送buffer响应: status=ok, data={$msg}\n";
-            var_dump(!ctype_print($msg));
-            $socket->emitBinary("binary", $msg, ["req" => 'test']);
-        }
-    );
-    echo "[socket] buffer事件监听器注册完成\n";
+        $socket->emitBinary('binaryResponse', $msg, ['status' => 'ok']);
+    });
     
+    // 文件上传处理
+    $socket->on('file', function ($data) use ($socket) {
+        if (isset($data['name']) && isset($data['data'])) {
+            $fileName = $data['name'];
+            $fileData = $data['data'];
+            $fileSize = strlen($fileData);
+            // 这里可以添加文件存储逻辑
+            $socket->emit('message', "File received: {$fileName} ({$fileSize} bytes)");
+        }
+    });
+
     // 二进制数据事件处理器
     $socket->on('blob', function ($data) use ($socket) {
-        echo "[/] blob事件触发\n";
         if (is_string($data)) {
             $dataSize = strlen($data);
-            echo "[/] 接收到二进制数据: 大小={$dataSize} 字节\n";
-            echo "[/] 数据内容(前100字节): " . substr($data, 0, 100) . "\n";
-            
-            // 回显数据给客户端
             $socket->emit('blob', ['status' => 'received', 'size' => $dataSize]);
-        } else {
-            echo "[/] 接收到非二进制数据: " . json_encode($data) . "\n";
         }
     });
-    echo "[socket] blob事件监听器注册完成\n";
+
+    // ping事件处理
+    $socket->on('ping', function () use ($socket) {
+        $socket->emit('pong');
+    });
+
+    // ACK超时测试
+    $socket->on('ackTimeout', function ($timeout) use ($socket) {
+        usleep($timeout * 1000); // 模拟超时
+        // 不发送响应，让客户端超时
+    });
+
+    // 双向ACK测试
+    $socket->on('twoWay', function ($data) use ($socket) {
+        $socket->emit('twoWay', 'Server response', function($clientResponse) use ($socket) {
+            $socket->emit('twoWayBack', 'Final response: ' . $clientResponse);
+        });
+    });
+
+    // 二进制事件测试
+    $socket->on('binaryEvent', function ($data) use ($socket) {
+        $socket->emit('binaryEvent', $data);
+    });
+
+    // 请求二进制数据
+    $socket->on('reqBinary', function ($data) use ($socket) {
+        $binaryData = "Hello binary world!";
+        $socket->emitBinary('binaryResponse', $binaryData);
+    });
+
+    // 类型化数组处理
+    $socket->on('typedArray', function ($data) use ($socket) {
+        $socket->emit('binaryResponse', ['status' => 'ok', 'data' => $data]);
+    });
+
+    // 多ACK测试
+    for ($i = 1; $i <= 3; $i++) {
+        $socket->on("ack{$i}", function ($data) use ($socket, $i) {
+            $socket->emit("ack{$i}", "Response for ack{$i}");
+        });
+    }
 
     // 断开连接事件处理器
     $socket->on('disconnect', function () use ($socket) {
-        echo "[/] 断开: " . $socket->getId() . "\n";
+        // 可以在这里添加断开连接的清理逻辑
     });
     
 }, '/chat');
 
-
+// 注册/test命名空间处理器
+$io->on('connection', function ($socket) use ($io) {
+    // 连接成功时发送欢迎消息
+    $socket->emit('welcome', 'Welcome to /test namespace!');
+    
+    // 测试消息事件
+    $socket->on('message', function ($msg) use ($socket) {
+        $socket->emit('message', 'Test namespace: ' . $msg);
+    });
+    
+    // 断开连接事件
+    $socket->on('disconnect', function () use ($socket) {
+        // 清理逻辑
+    });
+    
+}, '/test');
 
 Worker::runAll();

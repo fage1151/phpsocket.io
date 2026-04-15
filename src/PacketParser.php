@@ -189,24 +189,17 @@ class PacketParser
         // 收集数据参数
         $dataArgs = [];
         
-        // 遍历所有元素，除了最后一个可能的ACK ID
+        // 遍历所有元素，将所有元素都作为数据参数
         for ($i = 3; $i < count($decoded); $i++) {
             if (!isset($decoded[$i])) continue;
             
             $element = $decoded[$i];
-            
-            // 检查是否是最后一个元素且是数字（可能是ACK ID）
-            if ($i === count($decoded) - 1 && is_numeric($element) && !is_string($element)) {
-                // ACK ID - 只有最后一个数字才是ACK ID
-                $packet['id'] = (int)$element;
-            } else {
-                // 数据参数
-                $dataArgs[] = $element;
-            }
+            // 所有元素都作为数据参数
+            $dataArgs[] = $element;
         }
         
         $packet['data'] = $dataArgs;
-        echo "[packet] 事件数据解析 (格式2): event={$packet['event']}, data=" . json_encode($packet['data']) . ", namespace={$packet['namespace']}" . (isset($packet['id']) ? ", ack_id={$packet['id']}" : "") . "\n";
+        echo "[packet] 事件数据解析 (格式2): event={$packet['event']}, data=" . json_encode($packet['data']) . ", namespace={$packet['namespace']}" . "\n";
     }
     
     /**
@@ -219,9 +212,8 @@ class PacketParser
         // Socket.IO v4协议标准解析算法
         $dataArgs = [];
         $foundNamespace = false;
-        $foundAckId = false;
         
-        // 收集所有数据参数（直到遇到元数据标记或结束）
+        // 收集所有数据参数
         for ($i = 2; $i < count($decoded); $i++) {
             if (!isset($decoded[$i])) continue;
             
@@ -232,13 +224,8 @@ class PacketParser
                 // 命名空间标记：必须以"/"开头且不是根命名空间
                 $packet['namespace'] = $element;
                 $foundNamespace = true;
-            } else if ($foundNamespace && is_numeric($element) && !is_string($element)) {
-                // ACK ID标记：只有在命名空间之后出现的真正数字才识别为ACK ID
-                $packet['id'] = (int)$element;
-                $foundAckId = true;
-                break;
-            } else if (!$foundNamespace && !$foundAckId) {
-                // 数据参数
+            } else {
+                // 所有其他元素都作为数据参数
                 $dataArgs[] = $element;
             }
         }
@@ -251,7 +238,7 @@ class PacketParser
         // 协议标准：数据作为数组传递给事件处理器
         $packet['data'] = $dataArgs;
         
-        echo "[packet] 事件数据解析 (格式1): event={$packet['event']}, data=" . json_encode($packet['data']) . ", namespace={$packet['namespace']}" . (isset($packet['id']) ? ", ack_id={$packet['id']}" : "") . "\n";
+        echo "[packet] 事件数据解析 (格式1): event={$packet['event']}, data=" . json_encode($packet['data']) . ", namespace={$packet['namespace']}" . "\n";
     }
     
     /**

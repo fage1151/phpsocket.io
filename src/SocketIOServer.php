@@ -677,4 +677,89 @@ class SocketIOServer
         return $sockets;
     }
     
+    /**
+     * 获取指定命名空间的 Socket.IO 实例
+     * 用法：$io->of('/chat')->emit('event', 'data');
+     */
+    public function of($namespace = '/')
+    {
+        return new NamespaceEmitter($this, $namespace);
+    }
+    
+}
+
+/**
+ * NamespaceEmitter - 命名空间发射器
+ * 用于向指定命名空间的所有客户端发送消息
+ */
+class NamespaceEmitter
+{
+    private $server;
+    private $namespace;
+    
+    public function __construct($server, $namespace)
+    {
+        $this->server = $server;
+        $this->namespace = $namespace;
+    }
+    
+    /**
+     * 向指定命名空间的所有客户端发送消息
+     */
+    public function emit($event, ...$args)
+    {
+        // 获取指定命名空间的所有socket实例
+        $sockets = $this->server->fetchSockets($this->namespace);
+        
+        // 向每个socket发送消息
+        foreach ($sockets as $socket) {
+            $socket->emit($event, ...$args);
+        }
+        
+        return $this;
+    }
+    
+    /**
+     * 向指定房间发送消息
+     */
+    public function to($room)
+    {
+        return new RoomEmitter($this->server, $this->namespace, $room);
+    }
+}
+
+/**
+ * RoomEmitter - 房间发射器
+ * 用于向指定命名空间的指定房间发送消息
+ */
+class RoomEmitter
+{
+    private $server;
+    private $namespace;
+    private $room;
+    
+    public function __construct($server, $namespace, $room)
+    {
+        $this->server = $server;
+        $this->namespace = $namespace;
+        $this->room = $room;
+    }
+    
+    /**
+     * 向指定房间的所有客户端发送消息
+     */
+    public function emit($event, ...$args)
+    {
+        // 获取指定命名空间的所有socket实例
+        $sockets = $this->server->fetchSockets($this->namespace);
+        
+        // 向在指定房间的socket发送消息
+        foreach ($sockets as $socket) {
+            if ($socket->inRoom($this->room)) {
+                $socket->emit($event, ...$args);
+            }
+        }
+        
+        return $this;
+    }
 }
