@@ -66,7 +66,7 @@ class SocketIOServer
             throw new \Exception('Invalid listen format. Use "address:port" format.');
         }
         
-        $this->listen((int)$matches[2], $matches[1], $options['ssl'] ?? []);
+        $this->listen((int)$matches[2], $matches[1], ['ssl' => ($options['ssl'] ?? [])]);
     }
     
     /**
@@ -198,12 +198,17 @@ class SocketIOServer
      */
     public function listen(int $port = 8088, string $address = '0.0.0.0', array $context = []): void
     {
-        // 确定协议：如果有SSL配置，使用https，否则使用http
-        $protocol = !empty($context) ? 'https' : 'http';
+        // 提取SSL配置
+        $sslConfig = $context['ssl'] ?? [];
         
-        // 创建Workerman Worker实例
-        $worker = new Worker("{$protocol}://{$address}:{$port}", $context);
+        // 创建Workerman Worker实例，protocol始终为http，传递整个context
+        $worker = new Worker("http://{$address}:{$port}", $context);
         $worker->name = 'SocketIO-Server';
+        
+        // 如果有SSL配置，设置transport为ssl
+        if (!empty($sslConfig)) {
+            $worker->transport = 'ssl';
+        }
         
         // 绑定事件处理器
         $worker->onConnect = [$this, 'onConnect'];
