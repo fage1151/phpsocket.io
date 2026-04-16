@@ -72,9 +72,9 @@ class SocketIOServer
     /**
      * 设置跨进程适配器
      */
-    public function setAdapter($adapter, array $config = [])
+    public function setAdapter(\PhpSocketIO\Adapter\AdapterInterface $adapter)
     {
-        $this->serverManager->setAdapter($adapter, $config);
+        $this->serverManager->setAdapter($adapter);
     }
     
     /**

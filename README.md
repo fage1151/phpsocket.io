@@ -118,13 +118,14 @@ $io = new SocketIOServer('0.0.0.0:8088', [
     'workerCount'  => 4,  // 设置4个worker
 ]);
 
-// 设置集群适配器
-$io->setAdapter(new ClusterAdapter([
+// 创建并设置集群适配器
+$adapter = new ClusterAdapter([
     'channel_ip' => '127.0.0.1',
     'channel_port' => 2206,
     'prefix' => 'socketio_',
     'heartbeat' => 25
-]));
+]);
+$io->setAdapter($adapter);
 
 // 事件处理代码...
 

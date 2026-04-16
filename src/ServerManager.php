@@ -3,7 +3,6 @@
 namespace PhpSocketIO;
 
 use PhpSocketIO\Adapter\AdapterInterface;
-use PhpSocketIO\Adapter\ClusterAdapter;
 
 /**
  * 服务器管理器 - 管理Socket.IO服务器配置和状态
@@ -43,16 +42,9 @@ class ServerManager
     /**
      * 设置跨进程适配器
      */
-    public function setAdapter($adapter, array $config = []): void
+    public function setAdapter(AdapterInterface $adapter): void
     {
-        if ($adapter instanceof AdapterInterface) {
-            $this->adapter = $adapter;
-        } elseif (is_string($adapter) && class_exists($adapter)) {
-            $this->adapter = new $adapter($config);
-        } else {
-            // 使用默认的ClusterAdapter
-            $this->adapter = new ClusterAdapter($config);
-        }
+        $this->adapter = $adapter;
         
         // 初始化适配器
         $this->adapter->init();
