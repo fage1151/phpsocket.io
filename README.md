@@ -38,9 +38,13 @@ composer install
 
 ### 安装可选依赖
 
-#### 使用ClusterAdapter时（已包含在默认依赖中）：
+#### 使用ClusterAdapter时：
 
-ClusterAdapter 基于 Workerman Channel，已经在 `composer install` 时自动安装。
+ClusterAdapter 基于 Workerman Channel，默认不包含，需要安装：
+
+```bash
+composer require workerman/channel
+```
 
 #### 使用RedisAdapter时：
 

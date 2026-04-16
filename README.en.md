@@ -38,9 +38,13 @@ composer install
 
 ### Install Optional Dependencies
 
-#### When using ClusterAdapter (included in default dependencies):
+#### When using ClusterAdapter:
 
-ClusterAdapter is based on Workerman Channel, which is automatically installed during `composer install`.
+ClusterAdapter is based on Workerman Channel, which is not included by default and needs to be installed:
+
+```bash
+composer require workerman/channel
+```
 
 #### When using RedisAdapter:
 
