@@ -23,7 +23,9 @@
 
 ## 安装
 
-### 基本安装
+### 方法一：使用 Composer 安装
+
+#### 基本安装
 
 使用 Composer 安装核心包：
 
@@ -31,7 +33,7 @@
 composer require phpsocketio/server
 ```
 
-### 安装可选依赖
+#### 安装可选依赖
 
 #### 使用ClusterAdapter时：
 
@@ -45,10 +47,23 @@ composer require workerman/channel
 composer require workerman/redis
 ```
 
-### 完整安装（包含所有可选依赖）
+#### 完整安装（包含所有可选依赖）
 
 ```bash
 composer require phpsocketio/server workerman/channel workerman/redis
+```
+
+### 方法二：从 GitHub 克隆
+
+```bash
+# 克隆项目
+git clone https://github.com/phpsocketio/socket.io.git
+
+# 进入项目目录
+cd socket.io
+
+# 安装依赖
+composer install
 ```
 
 ## 项目结构

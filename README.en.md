@@ -23,7 +23,9 @@ A PHP server implementation of [Socket.IO](https://socket.io), supporting WebSoc
 
 ## Installation
 
-### Basic Installation
+### Method 1: Using Composer
+
+#### Basic Installation
 
 Install the core package using Composer:
 
@@ -31,7 +33,7 @@ Install the core package using Composer:
 composer require phpsocketio/server
 ```
 
-### Install Optional Dependencies
+#### Install Optional Dependencies
 
 #### When using ClusterAdapter:
 
@@ -45,10 +47,23 @@ composer require workerman/channel
 composer require workerman/redis
 ```
 
-### Full Installation (including all optional dependencies)
+#### Full Installation (including all optional dependencies)
 
 ```bash
 composer require phpsocketio/server workerman/channel workerman/redis
+```
+
+### Method 2: Clone from GitHub
+
+```bash
+# Clone the project
+git clone https://github.com/phpsocketio/socket.io.git
+
+# Enter the project directory
+cd socket.io
+
+# Install dependencies
+composer install
 ```
 
 ## Quick Start
