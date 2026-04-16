@@ -66,6 +66,13 @@ Worker::runAll();
 
 When using multiple worker processes, adapter must be set via setAdapter method:
 
+##### Using ClusterAdapter (based on Workerman Channel)
+
+> Note: To use ClusterAdapter, you need to install workerman/channel first:
+> ```bash
+> composer require workerman/channel
+> ```
+
 ```php
 use PhpSocketIO\SocketIOServer;
 use PhpSocketIO\Adapter\ClusterAdapter;
@@ -81,6 +88,37 @@ $io = new SocketIOServer('0.0.0.0:8088', [
 $adapter = new ClusterAdapter([
     'channel_ip' => '127.0.0.1',
     'channel_port' => 2206,
+    'prefix' => 'socketio_',
+    'heartbeat' => 25
+]);
+$io->setAdapter($adapter);
+
+// Event handling code...
+
+Worker::runAll();
+```
+
+##### Using RedisAdapter (based on Redis)
+
+> Note: To use RedisAdapter, you need to ensure that PHP has the Redis extension installed.
+
+```php
+use PhpSocketIO\SocketIOServer;
+use PhpSocketIO\Adapter\RedisAdapter;
+
+// Create multi-worker server instance (4 workers)
+$io = new SocketIOServer('0.0.0.0:8088', [
+    'pingInterval' => 25000,
+    'pingTimeout'  => 20000,
+    'workerCount'  => 4,  // Set 4 workers
+]);
+
+// Create and set Redis adapter
+$adapter = new RedisAdapter([
+    'host' => '127.0.0.1',
+    'port' => 6379,
+    'auth' => null,  // Redis authentication password, null for no password
+    'db' => 0,       // Redis database number
     'prefix' => 'socketio_',
     'heartbeat' => 25
 ]);

@@ -107,6 +107,13 @@ Worker::runAll();
 
 当需要使用多个worker进程时，必须通过setAdapter方法设置adapter：
 
+##### 使用ClusterAdapter（基于Workerman Channel）
+
+> 注意：使用ClusterAdapter需要先安装workerman/channel：
+> ```bash
+> composer require workerman/channel
+> ```
+
 ```php
 use PhpSocketIO\SocketIOServer;
 use PhpSocketIO\Adapter\ClusterAdapter;
@@ -122,6 +129,37 @@ $io = new SocketIOServer('0.0.0.0:8088', [
 $adapter = new ClusterAdapter([
     'channel_ip' => '127.0.0.1',
     'channel_port' => 2206,
+    'prefix' => 'socketio_',
+    'heartbeat' => 25
+]);
+$io->setAdapter($adapter);
+
+// 事件处理代码...
+
+Worker::runAll();
+```
+
+##### 使用RedisAdapter（基于Redis）
+
+> 注意：使用RedisAdapter需要确保PHP安装了Redis扩展。
+
+```php
+use PhpSocketIO\SocketIOServer;
+use PhpSocketIO\Adapter\RedisAdapter;
+
+// 创建多worker服务器实例（4个worker）
+$io = new SocketIOServer('0.0.0.0:8088', [
+    'pingInterval' => 25000,
+    'pingTimeout'  => 20000,
+    'workerCount'  => 4,  // 设置4个worker
+]);
+
+// 创建并设置Redis适配器
+$adapter = new RedisAdapter([
+    'host' => '127.0.0.1',
+    'port' => 6379,
+    'auth' => null,  // Redis认证密码，无密码时为null
+    'db' => 0,       // Redis数据库编号
     'prefix' => 'socketio_',
     'heartbeat' => 25
 ]);
