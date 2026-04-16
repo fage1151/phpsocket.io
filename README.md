@@ -16,10 +16,10 @@
 ## 系统要求
 
 - PHP > 8.0
-- [workerman/workerman](https://github.com/walkerman/workerman) >= 4.0
+- workerman/workerman >= 4.0
 - 可选依赖：
-  - [workerman/channel](https://github.com/walkerman/channel)（使用ClusterAdapter时需要）
-  - [workerman/redis](https://github.com/walkerman/redis)（使用RedisAdapter时需要）
+  - workerman/channel（使用ClusterAdapter时需要）
+  - workerman/redis（使用RedisAdapter时需要）
 
 ## 安装
 

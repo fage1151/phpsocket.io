@@ -16,10 +16,10 @@ A PHP server implementation of [Socket.IO](https://socket.io), supporting WebSoc
 ## System Requirements
 
 - PHP > 8.0
-- [workerman/workerman](https://github.com/walkerman/workerman) >= 4.0
+- workerman/workerman >= 4.0
 - Optional dependencies:
-  - [workerman/channel](https://github.com/walkerman/channel) (required when using ClusterAdapter)
-  - [workerman/redis](https://github.com/walkerman/redis) (required when using RedisAdapter)
+  - workerman/channel (required when using ClusterAdapter)
+  - workerman/redis (required when using RedisAdapter)
 
 ## Installation
 
