@@ -78,7 +78,12 @@ $io = new SocketIOServer('0.0.0.0:8088', [
 ]);
 
 // Set cluster adapter
-$io->setAdapter(new ClusterAdapter($io->getServerManager()));
+$io->setAdapter(new ClusterAdapter([
+    'channel_ip' => '127.0.0.1',
+    'channel_port' => 2206,
+    'prefix' => 'socketio_',
+    'heartbeat' => 25
+]));
 
 // Event handling code...
 

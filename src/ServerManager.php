@@ -48,14 +48,14 @@ class ServerManager
         if ($adapter instanceof AdapterInterface) {
             $this->adapter = $adapter;
         } elseif (is_string($adapter) && class_exists($adapter)) {
-            $this->adapter = new $adapter($this);
+            $this->adapter = new $adapter($config);
         } else {
             // 使用默认的ClusterAdapter
-            $this->adapter = new ClusterAdapter($this);
+            $this->adapter = new ClusterAdapter($config);
         }
         
         // 初始化适配器
-        $this->adapter->init($config);
+        $this->adapter->init();
         $this->clusterEnabled = true;
         
         echo "[cluster] adapter initialized successfully\n";
@@ -75,6 +75,14 @@ class ServerManager
     public function isClusterEnabled(): bool
     {
         return $this->clusterEnabled && $this->adapter !== null;
+    }
+    
+    /**
+     * 检查是否启用集群模式（兼容方法）
+     */
+    public function hasCluster(): bool
+    {
+        return $this->isClusterEnabled();
     }
 
     /**

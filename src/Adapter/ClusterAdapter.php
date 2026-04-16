@@ -11,8 +11,7 @@ use Channel\Server as ChannelServer;
  */
 class ClusterAdapter implements AdapterInterface
 {
-    /** @var SocketIOServer SocketIO服务器实例 */
-    private $server;
+
     
     /** @var array 配置参数 */
     private $config;
@@ -49,29 +48,9 @@ class ClusterAdapter implements AdapterInterface
     
     /**
      * 构造函数
-     * @param mixed $server SocketIO服务器实例或ServerManager实例
-     */
-    public function __construct($server)
-    {
-        // 检查参数类型
-        if ($server instanceof \PhpSocketIO\SocketIOServer) {
-            $this->server = $server;
-        } elseif ($server instanceof \PhpSocketIO\ServerManager) {
-            // 从ServerManager获取SocketIOServer实例
-            // 这里需要注意：ServerManager可能没有直接引用SocketIOServer
-            // 我们暂时存储ServerManager，后续通过其他方式获取SocketIOServer
-            $this->server = $server;
-        } else {
-            throw new \InvalidArgumentException('Invalid server instance');
-        }
-        $this->processId = getmypid();
-    }
-    
-    /**
-     * 初始化适配器
      * @param array $config 配置参数
      */
-    public function init(array $config): void
+    public function __construct(array $config = [])
     {
         $this->config = array_merge([
             'channel_ip' => '127.0.0.1',
@@ -81,6 +60,20 @@ class ClusterAdapter implements AdapterInterface
         ], $config);
         
         $this->prefix = $this->config['prefix'];
+        $this->processId = getmypid();
+    }
+    
+    /**
+     * 初始化适配器
+     * @param array $config 配置参数（可选，用于覆盖构造函数中的配置）
+     */
+    public function init(array $config = []): void
+    {
+        // 合并配置参数
+        if (!empty($config)) {
+            $this->config = array_merge($this->config, $config);
+            $this->prefix = $this->config['prefix'];
+        }
         
         // 启动Channel客户端并订阅相关频道
         $this->initChannelClient();
@@ -386,17 +379,12 @@ class ClusterAdapter implements AdapterInterface
             return;
         }
         
-        // 通过SocketIOServer广播到本地所有会话
-        if ($this->server instanceof \PhpSocketIO\SocketIOServer) {
-            $this->server->broadcastLocally($packet);
-        } else {
-            // 直接向所有会话发送消息
-            $sessionClass = '\PhpSocketIO\Session';
-            if (class_exists($sessionClass)) {
-                $activeSessions = $sessionClass::all();
-                foreach ($activeSessions as $sid => $session) {
-                    $session->send($packet['data'] ?? json_encode($packet));
-                }
+        // 直接向所有会话发送消息
+        $sessionClass = '\PhpSocketIO\Session';
+        if (class_exists($sessionClass)) {
+            $activeSessions = $sessionClass::all();
+            foreach ($activeSessions as $sid => $session) {
+                $sessionClass::sendToSession($sid, $packet);
             }
         }
         
@@ -425,18 +413,11 @@ class ClusterAdapter implements AdapterInterface
         
         // 只在本地房间中有成员时才发送
         if (isset($this->rooms[$room]) && !empty($this->rooms[$room])) {
-            if ($this->server instanceof \PhpSocketIO\SocketIOServer) {
-                $this->server->emitToRoomLocally($room, $packet);
-            } else {
-                // 直接向房间成员发送消息
-                $sessionClass = '\PhpSocketIO\Session';
-                if (class_exists($sessionClass)) {
-                    foreach ($this->rooms[$room] as $sid) {
-                        $session = $sessionClass::get($sid);
-                        if ($session) {
-                            $session->send($packet['data'] ?? json_encode($packet));
-                        }
-                    }
+            // 直接向房间成员发送消息
+            $sessionClass = '\PhpSocketIO\Session';
+            if (class_exists($sessionClass)) {
+                foreach ($this->rooms[$room] as $sid) {
+                    $sessionClass::sendToSession($sid, $packet);
                 }
             }
         }
