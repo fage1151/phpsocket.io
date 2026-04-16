@@ -15,7 +15,7 @@ A PHP server implementation of [Socket.IO](https://socket.io), supporting WebSoc
 
 ## System Requirements
 
-- PHP >= 8.0
+- PHP > 8.0
 - [workerman/workerman](https://github.com/walkerman/workerman) >= 4.0
 - Optional dependencies:
   - [workerman/channel](https://github.com/walkerman/channel) (required when using ClusterAdapter)
@@ -23,37 +23,7 @@ A PHP server implementation of [Socket.IO](https://socket.io), supporting WebSoc
 
 ## Installation
 
-### Method 1: Using Composer
-
-#### Basic Installation
-
-Install the core package using Composer:
-
-```bash
-composer require phpsocketio/server
-```
-
-#### Install Optional Dependencies
-
-#### When using ClusterAdapter:
-
-```bash
-composer require workerman/channel
-```
-
-#### When using RedisAdapter:
-
-```bash
-composer require workerman/redis
-```
-
-#### Full Installation (including all optional dependencies)
-
-```bash
-composer require phpsocketio/server workerman/channel workerman/redis
-```
-
-### Method 2: Clone from GitHub
+### Clone from GitHub
 
 ```bash
 # Clone the project
@@ -64,6 +34,18 @@ cd socket.io
 
 # Install dependencies
 composer install
+```
+
+### Install Optional Dependencies
+
+#### When using ClusterAdapter (included in default dependencies):
+
+ClusterAdapter is based on Workerman Channel, which is automatically installed during `composer install`.
+
+#### When using RedisAdapter:
+
+```bash
+composer require workerman/redis
 ```
 
 ## Quick Start

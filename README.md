@@ -15,7 +15,7 @@
 
 ## 系统要求
 
-- PHP >= 8.0
+- PHP > 8.0
 - [workerman/workerman](https://github.com/walkerman/workerman) >= 4.0
 - 可选依赖：
   - [workerman/channel](https://github.com/walkerman/channel)（使用ClusterAdapter时需要）
@@ -23,37 +23,7 @@
 
 ## 安装
 
-### 方法一：使用 Composer 安装
-
-#### 基本安装
-
-使用 Composer 安装核心包：
-
-```bash
-composer require phpsocketio/server
-```
-
-#### 安装可选依赖
-
-#### 使用ClusterAdapter时：
-
-```bash
-composer require workerman/channel
-```
-
-#### 使用RedisAdapter时：
-
-```bash
-composer require workerman/redis
-```
-
-#### 完整安装（包含所有可选依赖）
-
-```bash
-composer require phpsocketio/server workerman/channel workerman/redis
-```
-
-### 方法二：从 GitHub 克隆
+### 从 GitHub 克隆
 
 ```bash
 # 克隆项目
@@ -64,6 +34,18 @@ cd socket.io
 
 # 安装依赖
 composer install
+```
+
+### 安装可选依赖
+
+#### 使用ClusterAdapter时（已包含在默认依赖中）：
+
+ClusterAdapter 基于 Workerman Channel，已经在 `composer install` 时自动安装。
+
+#### 使用RedisAdapter时：
+
+```bash
+composer require workerman/redis
 ```
 
 ## 项目结构
