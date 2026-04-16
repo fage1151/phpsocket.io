@@ -17,14 +17,38 @@
 
 - PHP >= 8.0
 - [workerman/workerman](https://github.com/walkerman/workerman) >= 4.0
-- Redis 扩展（集群模式需要）
+- 可选依赖：
+  - [workerman/channel](https://github.com/walkerman/channel)（使用ClusterAdapter时需要）
+  - [workerman/redis](https://github.com/walkerman/redis)（使用RedisAdapter时需要）
 
 ## 安装
 
-使用 Composer 安装：
+### 基本安装
+
+使用 Composer 安装核心包：
 
 ```bash
 composer require phpsocketio/server
+```
+
+### 安装可选依赖
+
+#### 使用ClusterAdapter时：
+
+```bash
+composer require workerman/channel
+```
+
+#### 使用RedisAdapter时：
+
+```bash
+composer require workerman/redis
+```
+
+### 完整安装（包含所有可选依赖）
+
+```bash
+composer require phpsocketio/server workerman/channel workerman/redis
 ```
 
 ## 项目结构

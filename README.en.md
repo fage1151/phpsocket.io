@@ -15,16 +15,40 @@ A PHP server implementation of [Socket.IO](https://socket.io), supporting WebSoc
 
 ## System Requirements
 
-- PHP >= 7.4
+- PHP >= 8.0
 - [workerman/workerman](https://github.com/walkerman/workerman) >= 4.0
-- Redis extension (required for cluster mode)
+- Optional dependencies:
+  - [workerman/channel](https://github.com/walkerman/channel) (required when using ClusterAdapter)
+  - [workerman/redis](https://github.com/walkerman/redis) (required when using RedisAdapter)
 
 ## Installation
 
-Install via Composer:
+### Basic Installation
+
+Install the core package using Composer:
 
 ```bash
 composer require phpsocketio/server
+```
+
+### Install Optional Dependencies
+
+#### When using ClusterAdapter:
+
+```bash
+composer require workerman/channel
+```
+
+#### When using RedisAdapter:
+
+```bash
+composer require workerman/redis
+```
+
+### Full Installation (including all optional dependencies)
+
+```bash
+composer require phpsocketio/server workerman/channel workerman/redis
 ```
 
 ## Quick Start
