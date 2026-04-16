@@ -40,7 +40,6 @@ $io = new SocketIOServer('0.0.0.0:8088', [
     'pingTimeout'  => 20000,  // Heartbeat timeout (milliseconds)
     'maxPayload'   => 10485760, // Maximum payload (bytes)
     'workerCount'  => 1,       // Worker count, default is 1
-    'adapter'      => null,     // Cluster adapter, required when workerCount > 1
 ]);
 
 // Connection event handling
@@ -65,7 +64,7 @@ Worker::runAll();
 
 ### Multi-worker Configuration Example
 
-When using multiple worker processes, adapter must be set:
+When using multiple worker processes, adapter must be set via setAdapter method:
 
 ```php
 use PhpSocketIO\SocketIOServer;
@@ -76,8 +75,10 @@ $io = new SocketIOServer('0.0.0.0:8088', [
     'pingInterval' => 25000,
     'pingTimeout'  => 20000,
     'workerCount'  => 4,  // Set 4 workers
-    'adapter'      => ClusterAdapter::class, // Adapter must be set
 ]);
+
+// Set cluster adapter
+$io->setAdapter(new ClusterAdapter($io->getServerManager()));
 
 // Event handling code...
 

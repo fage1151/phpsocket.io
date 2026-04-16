@@ -33,15 +33,10 @@ class ServerManager
         if (isset($config['cors'])) {
             $this->cors = $config['cors'];
         }
-
-        // 设置适配器
-        if (isset($config['adapter'])) {
-            $this->setAdapter($config['adapter']);
-        }
         
         // 如果worker数量大于1，必须设置adapter
         if ($this->workerCount > 1 && !$this->clusterEnabled) {
-            throw new \RuntimeException('When workerCount > 1, adapter must be set');
+            throw new \RuntimeException('When workerCount > 1, adapter must be set via setAdapter method');
         }
     }
 

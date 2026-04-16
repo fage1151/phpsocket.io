@@ -81,7 +81,6 @@ $io = new SocketIOServer('0.0.0.0:8088', [
     'pingTimeout'  => 20000,  // 心跳超时（毫秒）
     'maxPayload'   => 10485760, // 最大负载（字节）
     'workerCount'  => 1,       // worker数量，默认为1
-    'adapter'      => null,     // 集群适配器，workerCount > 1时必须设置
 ]);
 
 // 连接事件处理
@@ -106,7 +105,7 @@ Worker::runAll();
 
 ### 多worker配置示例
 
-当需要使用多个worker进程时，必须设置adapter：
+当需要使用多个worker进程时，必须通过setAdapter方法设置adapter：
 
 ```php
 use PhpSocketIO\SocketIOServer;
@@ -117,8 +116,10 @@ $io = new SocketIOServer('0.0.0.0:8088', [
     'pingInterval' => 25000,
     'pingTimeout'  => 20000,
     'workerCount'  => 4,  // 设置4个worker
-    'adapter'      => ClusterAdapter::class, // 必须设置adapter
 ]);
+
+// 设置集群适配器
+$io->setAdapter(new ClusterAdapter($io->getServerManager()));
 
 // 事件处理代码...
 
