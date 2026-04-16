@@ -174,11 +174,11 @@ class ClusterAdapter implements AdapterInterface
     }
     
     /**
-     * 发布消息到指定房间
+     * 发送消息到指定房间
      * @param string $room 房间名称
      * @param array $packet 消息包数据
      */
-    public function publish(string $room, array $packet): void
+    public function to(string $room, array $packet): void
     {
         if (!$this->initialized) {
             throw new \RuntimeException('Adapter not initialized');
@@ -200,24 +200,6 @@ class ClusterAdapter implements AdapterInterface
         // 使用批处理机制发送房间消息
         $this->publishBatch($this->prefix . 'room', $data);
         echo "[adapter] publishing packet to room '{$room}': " . json_encode($packet) . "\n";
-    }
-    
-    /**
-     * 订阅房间消息（集群环境自动处理，无需显式订阅）
-     */
-    public function subscribe(string $room, callable $callback): void
-    {
-        // 集群环境中，所有进程都会收到房间消息
-        // 具体的处理逻辑在handleRoomMessage方法中实现
-    }
-    
-    /**
-     * 取消订阅房间
-     */
-    public function unsubscribe(string $room): void
-    {
-        // 集群环境中，无法单独取消订阅
-        // 通过rooms和sids的本地管理来实现
     }
     
     /**
@@ -252,7 +234,7 @@ class ClusterAdapter implements AdapterInterface
      * @param string $sid 会话ID
      * @param string $room 房间名称
      */
-    public function add(string $sid, string $room): void
+    public function join(string $sid, string $room): void
     {
         // 本地记录房间成员
         if (!isset($this->rooms[$room])) {
@@ -284,11 +266,11 @@ class ClusterAdapter implements AdapterInterface
     }
     
     /**
-     * 删除房间成员
+     * 移除房间成员
      * @param string $sid 会话ID
      * @param string $room 房间名称
      */
-    public function del(string $sid, string $room): void
+    public function leave(string $sid, string $room): void
     {
         // 本地移除房间成员
         if (isset($this->rooms[$room])) {
@@ -329,12 +311,12 @@ class ClusterAdapter implements AdapterInterface
      * 清理会话关联的房间
      * @param string $sid 会话ID
      */
-    public function delAll(string $sid): void
+    public function remove(string $sid): void
     {
         if (isset($this->sids[$sid])) {
             $rooms = $this->sids[$sid];
             foreach ($rooms as $room) {
-                $this->del($sid, $room);
+                $this->leave($sid, $room);
             }
             unset($this->sids[$sid]);
         }
@@ -478,11 +460,11 @@ class ClusterAdapter implements AdapterInterface
     }
     
     /**
-     * 单发消息到指定会话（跨进程单发消息）
+     * 单发消息到指定会话
      * @param string $sid 目标会话ID
      * @param array $packet 消息包数据
      */
-    public function send(string $sid, array $packet): void
+    public function emit(string $sid, array $packet): void
     {
         if (!$this->initialized) {
             throw new \RuntimeException('Adapter not initialized');
@@ -834,10 +816,10 @@ class ClusterAdapter implements AdapterInterface
     }
     
     /**
-     * 本地注册会话（当会话在本进程创建时调用）
+     * 注册会话
      * @param string $sid 会话ID
      */
-    public function registerSession(string $sid): void
+    public function register(string $sid): void
     {
         $this->sessionProcessMap[$sid] = $this->processId;
         
@@ -852,10 +834,10 @@ class ClusterAdapter implements AdapterInterface
     }
     
     /**
-     * 本地注销会话（当会话在本进程关闭时调用）
+     * 注销会话
      * @param string $sid 会话ID
      */
-    public function unregisterSession(string $sid): void
+    public function unregister(string $sid): void
     {
         if (isset($this->sessionProcessMap[$sid])) {
             unset($this->sessionProcessMap[$sid]);

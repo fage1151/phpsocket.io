@@ -15,57 +15,44 @@ interface AdapterInterface
     public function init(array $config): void;
     
     /**
-     * 发布消息到指定房间
-     * @param string $room 房间名称
-     * @param array $packet 消息包数据
-     */
-    public function publish(string $room, array $packet): void;
-    
-    /**
-     * 订阅房间消息
-     * @param string $room 房间名称
-     * @param callable $callback 消息回调函数
-     */
-    public function subscribe(string $room, callable $callback): void;
-    
-    /**
-     * 取消订阅房间
-     * @param string $room 房间名称
-     */
-    public function unsubscribe(string $room): void;
-    
-    /**
      * 广播消息到所有进程
      * @param array $packet 消息包数据
      */
     public function broadcast(array $packet): void;
     
     /**
-     * 单发消息到指定会话（仅会话在当前进程时消费，否则转发到其他进程）
+     * 发送消息到指定房间
+     * @param string $room 房间名称
+     * @param array $packet 消息包数据
+     */
+    public function to(string $room, array $packet): void;
+    
+    /**
+     * 单发消息到指定会话
      * @param string $sid 目标会话ID
      * @param array $packet 消息包数据
      */
-    public function send(string $sid, array $packet): void;
+    public function emit(string $sid, array $packet): void;
     
     /**
      * 添加房间成员
      * @param string $sid 会话ID
      * @param string $room 房间名称
      */
-    public function add(string $sid, string $room): void;
+    public function join(string $sid, string $room): void;
     
     /**
-     * 删除房间成员
+     * 移除房间成员
      * @param string $sid 会话ID
      * @param string $room 房间名称
      */
-    public function del(string $sid, string $room): void;
+    public function leave(string $sid, string $room): void;
     
     /**
      * 清理会话关联的房间
      * @param string $sid 会话ID
      */
-    public function delAll(string $sid): void;
+    public function remove(string $sid): void;
     
     /**
      * 获取房间成员列表
@@ -75,14 +62,19 @@ interface AdapterInterface
     public function clients(string $room): array;
     
     /**
-     * 获取会话所在的房间列表
+     * 注册会话
      * @param string $sid 会话ID
-     * @return array 房间名称列表
      */
-    public function rooms(string $sid): array;
+    public function register(string $sid): void;
     
     /**
-     * 关闭适配器连接
+     * 注销会话
+     * @param string $sid 会话ID
+     */
+    public function unregister(string $sid): void;
+    
+    /**
+     * 关闭适配器
      */
     public function close(): void;
 }

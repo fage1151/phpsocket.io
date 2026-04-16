@@ -141,7 +141,10 @@ Worker::runAll();
 
 ##### 使用RedisAdapter（基于Redis）
 
-> 注意：使用RedisAdapter需要确保PHP安装了Redis扩展。
+> 注意：使用RedisAdapter需要先安装workerman/redis：
+> ```bash
+> composer require workerman/redis
+> ```
 
 ```php
 use PhpSocketIO\SocketIOServer;

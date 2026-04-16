@@ -100,7 +100,10 @@ Worker::runAll();
 
 ##### Using RedisAdapter (based on Redis)
 
-> Note: To use RedisAdapter, you need to ensure that PHP has the Redis extension installed.
+> Note: To use RedisAdapter, you need to install workerman/redis first:
+> ```bash
+> composer require workerman/redis
+> ```
 
 ```php
 use PhpSocketIO\SocketIOServer;
