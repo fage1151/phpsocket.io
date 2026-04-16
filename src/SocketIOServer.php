@@ -205,6 +205,12 @@ class SocketIOServer
         $worker = new Worker("http://{$address}:{$port}", $context);
         $worker->name = 'SocketIO-Server';
         
+        // 设置worker数量
+        $workerCount = $this->serverManager->getWorkerCount();
+        if ($workerCount > 1) {
+            $worker->count = $workerCount;
+        }
+        
         // 如果有SSL配置，设置transport为ssl
         if (!empty($sslConfig)) {
             $worker->transport = 'ssl';
@@ -548,6 +554,38 @@ class SocketIOServer
         }
         
         return $this;
+    }
+    
+    /**
+     * 本地广播消息（集群模式下使用）
+     */
+    public function broadcastLocally(array $packet): void
+    {
+        // 向本地所有会话发送消息
+        $activeSessions = Session::all();
+        foreach ($activeSessions as $sid => $session) {
+            // 直接发送消息包
+            $session->send($packet['data'] ?? json_encode($packet));
+        }
+    }
+    
+    /**
+     * 向本地房间发送消息（集群模式下使用）
+     */
+    public function emitToRoomLocally(string $room, array $packet): void
+    {
+        // 获取房间成员
+        $roomMembers = $this->roomManager->getRoomMembers($room);
+        
+        // 向房间内所有成员发送消息
+        foreach ($roomMembers as $sid) {
+            // 获取会话
+            $session = Session::get($sid);
+            if (!$session) continue;
+            
+            // 直接发送消息包
+            $session->send($packet['data'] ?? json_encode($packet));
+        }
     }
 
     //========================================================================

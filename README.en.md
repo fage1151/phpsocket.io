@@ -32,3 +32,58 @@ composer require phpsocketio/server
 ### Basic Usage
 
 ```php
+use PhpSocketIO\SocketIOServer;
+
+// Create Socket.IO server instance
+$io = new SocketIOServer('0.0.0.0:8088', [
+    'pingInterval' => 25000,  // Heartbeat interval (milliseconds)
+    'pingTimeout'  => 20000,  // Heartbeat timeout (milliseconds)
+    'maxPayload'   => 10485760, // Maximum payload (bytes)
+    'workerCount'  => 1,       // Worker count, default is 1
+    'adapter'      => null,     // Cluster adapter, required when workerCount > 1
+]);
+
+// Connection event handling
+$io->on('connection', function ($socket) use ($io) {
+    // Send welcome message
+    $socket->emit('welcome', 'Welcome to Socket.IO server!');
+    
+    // Chat message handling
+    $socket->on('chat message', function ($msg) use ($socket) {
+        $socket->broadcast->emit('chat message', $msg);
+    });
+    
+    // Disconnect handling
+    $socket->on('disconnect', function () use ($socket) {
+        // Cleanup logic
+    });
+});
+
+// Start server
+Worker::runAll();
+```
+
+### Multi-worker Configuration Example
+
+When using multiple worker processes, adapter must be set:
+
+```php
+use PhpSocketIO\SocketIOServer;
+use PhpSocketIO\Adapter\ClusterAdapter;
+
+// Create multi-worker server instance (4 workers)
+$io = new SocketIOServer('0.0.0.0:8088', [
+    'pingInterval' => 25000,
+    'pingTimeout'  => 20000,
+    'workerCount'  => 4,  // Set 4 workers
+    'adapter'      => ClusterAdapter::class, // Adapter must be set
+]);
+
+// Event handling code...
+
+Worker::runAll();
+```
+
+## More Information
+
+For detailed usage instructions, please refer to the [USAGE.md](USAGE.md) file.

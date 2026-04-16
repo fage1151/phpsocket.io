@@ -2,6 +2,9 @@
 
 namespace PhpSocketIO;
 
+use PhpSocketIO\Adapter\AdapterInterface;
+use PhpSocketIO\Adapter\ClusterAdapter;
+
 /**
  * 服务器管理器 - 管理Socket.IO服务器配置和状态
  */
@@ -14,6 +17,7 @@ class ServerManager
     private array $serverOptions   = [];
     private bool $isRunning        = false;
     private $cors                  = null; // CORS配置
+    private int $workerCount       = 1; // worker数量，默认为1
 
     /**
      * 设置服务器配置
@@ -22,6 +26,7 @@ class ServerManager
     {
         $this->pingInterval = $config['pingInterval'] ?? 25000;
         $this->pingTimeout  = $config['pingTimeout']  ?? 20000;
+        $this->workerCount  = $config['workerCount']  ?? 1;
         $this->serverOptions = $config;
         
         // 设置CORS配置
@@ -32,6 +37,11 @@ class ServerManager
         // 设置适配器
         if (isset($config['adapter'])) {
             $this->setAdapter($config['adapter']);
+        }
+        
+        // 如果worker数量大于1，必须设置adapter
+        if ($this->workerCount > 1 && !$this->clusterEnabled) {
+            throw new \RuntimeException('When workerCount > 1, adapter must be set');
         }
     }
 
@@ -109,6 +119,14 @@ class ServerManager
     {
         return $this->cors;
     }
+    
+    /**
+     * 获取worker数量
+     */
+    public function getWorkerCount(): int
+    {
+        return $this->workerCount;
+    }
 
     /**
      * 设置服务器运行状态
@@ -161,6 +179,7 @@ class ServerManager
             'clusterEnabled' => $this->clusterEnabled,
             'pingInterval' => $this->pingInterval,
             'pingTimeout' => $this->pingTimeout,
+            'workerCount' => $this->workerCount,
             'sessionCount' => $sessionCount,
             'adapter' => $this->adapter ? get_class($this->adapter) : 'None',
             'configErrors' => $this->validateConfig()
