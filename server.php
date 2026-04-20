@@ -110,7 +110,8 @@ $io->on('connection', function ($socket) use ($io) {
     // 请求二进制数据
     $socket->on('reqBinary', function ($data) use ($socket) {
         $binaryData = "Hello binary world!";
-        $socket->emitBinary('binaryResponse', $data);
+        $socket->emitBinary('binaryResponse', '123');
+        return ['status' => 'ok'];
     });
 
     // 类型化数组处理

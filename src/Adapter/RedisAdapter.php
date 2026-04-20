@@ -62,10 +62,10 @@ class RedisAdapter implements AdapterInterface
      */
     private function getRedisClientClass(): string
     {
-        if (!class_exists('Workerman\Redis\Client')) {
+        if (!class_exists('\Workerman\Redis\Client')) {
             throw new \RuntimeException('Redis client not found. Please install workerman/redis via composer: composer require workerman/redis');
         }
-        return 'Workerman\Redis\Client';
+        return '\Workerman\Redis\Client';
     }
 
     /**

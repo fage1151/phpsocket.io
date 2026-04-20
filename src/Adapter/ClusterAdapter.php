@@ -88,10 +88,10 @@ class ClusterAdapter implements AdapterInterface
      */
     private function getChannelClientClass(): string
     {
-        if (!class_exists('Channel\Client')) {
+        if (!class_exists('\Channel\Client')) {
             throw new \RuntimeException('Channel client not found. Please install workerman/channel via composer: composer require workerman/channel');
         }
-        return 'Channel\Client';
+        return '\Channel\Client';
     }
     
     /**
@@ -670,7 +670,7 @@ class ClusterAdapter implements AdapterInterface
     private function handleDirectSend(string $sid, array $packet): void
     {
         // 获取SocketIOServer的Session实例并发送消息
-        $sessionClass = '\\PhpSocketIO\\Session';
+        $sessionClass = '\PhpSocketIO\Session';
         if (!class_exists($sessionClass)) {
             throw new \RuntimeException('Session class not found');
         }
@@ -1016,7 +1016,7 @@ class ClusterAdapter implements AdapterInterface
             }
             
             // Socket.IO v4集群协议：清理本地不再存在的会话
-            $sessionClass = '\\PhpSocketIO\\Session';
+            $sessionClass = '\PhpSocketIO\Session';
             if (class_exists($sessionClass)) {
                 foreach (array_keys($this->sessionProcessMap) as $sid) {
                     if (!$sessionClass::get($sid)) {
