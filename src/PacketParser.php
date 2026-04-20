@@ -661,85 +661,97 @@ class PacketParser
      * 构建Socket.IO数据包
      * @param string $type 包类型
      * @param array $params 参数
-     * @return string JSON格式的数据包
+     * @return string Socket.IO v4 标准格式的数据包
      */
     public static function buildSocketIOPacket($type, array $params = [])
     {
         $typeMap = array_flip(self::SOCKET_PACKET_TYPES);
         $typeCode = isset($typeMap[$type]) ? $typeMap[$type] : 2; // 默认为EVENT
         
-        $packet = [$typeCode];
+        $packet = (string)$typeCode;
         
         // 根据类型构建参数结构
         switch ($type) {
             case 'CONNECT':
-                $packet[] = $params['namespace'] ?? '/';
-                if (isset($params['auth']) && !empty($params['auth'])) {
-                    $packet[] = $params['auth'];
+                // 格式：0 + [/namespace,] + data
+                $namespace = $params['namespace'] ?? '/';
+                if ($namespace !== '/') {
+                    $packet .= $namespace . ',';
+                }
+                if (isset($params['data'])) {
+                    $packet .= json_encode($params['data']);
                 }
                 break;
                 
             case 'DISCONNECT':
-                $packet[] = $params['namespace'] ?? '/';
+                // 格式：1 + [/namespace]
+                $namespace = $params['namespace'] ?? '/';
+                if ($namespace !== '/') {
+                    $packet .= $namespace;
+                }
                 break;
                 
             case 'EVENT':
             case 'BINARY_EVENT':
-                // Socket.IO v4协议标准构建：必须严格遵循官方格式
-                // 标准格式：42["event_name", data_array, namespace?, ackId?]
-                // 注意：data数组必须保持包装状态，不展开！
-                $eventName = $params['event'] ?? 'unknown';
-                $packet[] = $eventName;
+                // 格式：[type] + [/namespace,] + [ackId] + [event name, data]
+                $namespace = $params['namespace'] ?? '/';
+                if ($namespace !== '/') {
+                    $packet .= $namespace . ',';
+                }
                 
-                // 为数据创建包装数组
+                if (isset($params['id'])) {
+                    $packet .= $params['id'];
+                }
+                
+                $eventName = $params['event'] ?? 'unknown';
                 $dataWrapper = self::createDataWrapper($params);
                 
-                // 关键修复：数据保持数组包装状态，不展开
-                $packet[] = $dataWrapper;
+                $eventArray = [$eventName];
+                foreach ($dataWrapper as $d) {
+                    $eventArray[] = $d;
+                }
+                $packet .= json_encode($eventArray);
                 
-                // 处理命名空间和ACK ID
-                self::addNamespaceAndAck($packet, $params);
-                
-                // 处理二进制标记
                 if ($type === 'BINARY_EVENT') {
-                    $packet['binary'] = true; // 标记二进制事件包
-                    echo "[protocol] BINARY_EVENT包构建完成: " . json_encode($packet) . "\n";
+                    echo "[protocol] BINARY_EVENT包构建完成: {$packet}\n";
                 } else {
                     echo "[socketio_v4_protocol] 标准EVENT包构建: event={$eventName}, data:" . json_encode($dataWrapper) . "\n";
-                    echo "[protocol] EVENT包构建完成: " . json_encode($packet) . "\n";
+                    echo "[protocol] EVENT包构建完成: {$packet}\n";
                 }
                 break;
                 
             case 'ACK':
-                $packet[] = $params['namespace'] ?? '/';
-                if (isset($params['data'])) {
-                    $packet[] = $params['data'];
-                }
-                if (isset($params['id'])) {
-                    $packet[] = $params['id'];
-                }
-                break;
-                
             case 'BINARY_ACK':
-                // Socket.IO v4二进制ACK包构建 - 缺失功能完善
-                $packet[] = $params['namespace'] ?? '/';
-                if (isset($params['data'])) {
-                    $packet[] = $params['data'];
+                // 格式：[type] + [/namespace,] + ackId + [data]
+                $namespace = $params['namespace'] ?? '/';
+                if ($namespace !== '/') {
+                    $packet .= $namespace . ',';
                 }
+                
                 if (isset($params['id'])) {
-                    $packet[] = $params['id'];
+                    $packet .= $params['id'];
                 }
-                $packet['binary'] = true; // 标记为二进制包
-                echo "[packet] built BINARY_ACK packet\n";
+                
+                if (isset($params['data'])) {
+                    $ackData = is_array($params['data']) ? $params['data'] : [$params['data']];
+                    $packet .= json_encode($ackData);
+                }
+                
+                if ($type === 'BINARY_ACK') {
+                    echo "[packet] built BINARY_ACK packet: {$packet}\n";
+                }
                 break;
                 
             case 'CONNECT_ERROR':
-                $packet[] = $params['namespace'] ?? '/';
-                $packet[] = $params['error'] ?? 'Unknown error';
+                $namespace = $params['namespace'] ?? '/';
+                if ($namespace !== '/') {
+                    $packet .= $namespace . ',';
+                }
+                $packet .= json_encode(['message' => $params['error'] ?? 'Unknown error']);
                 break;
         }
         
-        return json_encode($packet);
+        return $packet;
     }
 
     /**

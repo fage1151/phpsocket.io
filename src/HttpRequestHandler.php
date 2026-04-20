@@ -66,12 +66,6 @@ class HttpRequestHandler
             return;
         }
         
-        // 调试connection状态
-        echo "[debug] WebSocket消息处理 - Session状态: ";
-        echo "sid={$session->sid}, ";
-        echo "isWs=" . ($session->isWs ? 'true' : 'false') . ", ";
-        echo "connection=" . ($session->connection ? 'exists' : 'null') . "\n";
-        
         // 如果session中的connection为空或无效，更新为当前有效的connection
         if (!$session->connection || !method_exists($session->connection, 'send')) {
             echo "[fix] 重新绑定有效connection到Session\n";
@@ -89,42 +83,17 @@ class HttpRequestHandler
         // 检查是否为二进制数据
         $isBinary = $this->isBinaryFrame($data);
         if (!$isBinary) {
-            // 首先检查是否是Engine.IO二进制包（b开头的包）
-            if ($data[0] === 'b') {
-                echo "[websocket] received Engine.IO binary packet\n";
-                $this->processWebSocketData($session, $data);
-                return;
-            }
-            
-            // 检查数据内容中是否包含Socket.IO的二进制占位符
-            if (strpos($data, '"_placeholder"') !== false && strpos($data, '"num"') !== false) {
-                echo "[websocket] 检测到二进制数据占位符包：" . substr($data, 0, 200) . "\n";
-                
-                // 存储占位符包信息
-                $this->storePendingPlaceholder($session, $data);
-                
-                // 不立即处理，等待所有二进制附件到达后再处理
-                return;
-            }
-            
-            // 检查是否是二进制事件包（格式如451-或451/）
-            if (preg_match('/^4(\d)(\d+)/', $data, $matches) || preg_match('/^(\d)(\d+)-/', $data, $matches)) {
-                echo "[websocket] 检测到二进制事件包：" . substr($data, 0, 200) . "\n";
-                $this->storePendingPlaceholder($session, $data);
-                return;
-            }
-            
             // 普通文本数据处理
             echo "[websocket] 处理文本数据包：" . substr($data, 0, 200) . "\n";
             $this->processWebSocketData($session, $data);
         } else {
-            // 处理二进制数据
+            // 处理二进制数据，传递给Engine.IO handler
             $binaryData = is_string($data) ? $data : (string)$data;
             echo "[websocket] 收到二进制数据, 大小: " . strlen($binaryData) . " 字节\n";
-            echo "[websocket] 二进制数据内容（前100字节）: " . bin2hex(substr($binaryData, 0, min(100, strlen($binaryData)))) . "\n";
             
-            // 真正的二进制数据处理
-            $this->handleBinaryData($session, $binaryData);
+            // 构建二进制包并交给Engine.IO处理
+            $packet = ['type' => 'binary', 'data' => base64_encode($binaryData)];
+            $this->engineIoHandler->handlePacket($data, $packet, $connection, $session);
         }
     }
     
@@ -159,129 +128,6 @@ class HttpRequestHandler
         } else {
             echo "[error] Engine.IO handler not available for WebSocket data processing\n";
         }
-    }
-    
-    /**
-     * 处理二进制数据
-     * Socket.IO v4协议中，二进制数据需要配合占位符包一起处理
-     */
-    private function handleBinaryData(Session $session, string $data): void
-    {
-        // 检查session是否有等待的占位符包
-        if ($session->pendingBinaryPlaceholder !== null && $session->pendingBinaryCount > 0) {
-            // 收集二进制附件
-            $attachmentIndex = count($session->pendingBinaryAttachments);
-            $session->pendingBinaryAttachments[$attachmentIndex] = $data;
-            
-            // 检查是否所有附件都已收到
-            if (count($session->pendingBinaryAttachments) >= $session->pendingBinaryCount) {
-                // 合并处理所有附件
-                $this->combineAllAttachments($session);
-                
-                // 清理
-                $session->pendingBinaryAttachments = [];
-                $session->pendingBinaryPlaceholder = null;
-                $session->pendingBinaryCount = 0;
-            }
-        } else {
-            // 没有占位符包，作为独立二进制数据处理
-            // 存储二进制数据并设置超时清理
-            $session->pendingBinaryAttachments[0] = $data;
-            
-            // 设置超时清理，避免内存泄漏
-            \Workerman\Timer::add(5, function() use ($session) {
-                if (!empty($session->pendingBinaryAttachments) && $session->pendingBinaryCount === 0) {
-                    $session->pendingBinaryAttachments = [];
-                }
-            }, [], false);
-        }
-    }
-    
-    /**
-     * 合并所有二进制附件并处理
-     */
-    private function combineAllAttachments(Session $session): void
-    {
-        $placeholderInfo = $session->pendingBinaryPlaceholder;
-        $originalPacket = $placeholderInfo['packet'] ?? null;
-        
-        if (!$originalPacket) {
-            echo "[binary] no original packet found for placeholder\n";
-            return;
-        }
-        
-        echo "[binary] combining all " . count($session->pendingBinaryAttachments) . " attachments\n";
-        
-        if ($this->engineIoHandler) {
-            // 传递所有附件给 EngineIOHandler 处理
-            $this->engineIoHandler->processAllBinaryAttachments($session, $originalPacket, $session->pendingBinaryAttachments);
-        }
-    }
-    
-    /**
-     * 临时存储占位符包用于后续二进制数据处理
-     */
-    private function storePendingPlaceholder(Session $session, string $data): void
-    {
-        // 提取二进制附件数量 - 格式如 "51-" 中的 "1" 表示1个二进制附件
-        $binaryCount = $this->extractBinaryAttachmentCount($data);
-        
-        $session->pendingBinaryPlaceholder = [
-            'packet' => $data,
-            'timestamp' => time()
-        ];
-        $session->pendingBinaryCount = $binaryCount;
-        
-        echo "[binary] stored placeholder packet for sid: {$session->sid}, expecting {$binaryCount} binary attachments\n";
-        echo "[binary] current pending attachments: " . count($session->pendingBinaryAttachments) . "\n";
-        
-        // 检查是否已经有二进制附件到达（处理时序问题）
-        if (count($session->pendingBinaryAttachments) >= $binaryCount) {
-            echo "[binary] binary attachments already received, processing immediately\n";
-            $this->combineAllAttachments($session);
-            // 清理
-            $session->pendingBinaryAttachments = [];
-            $session->pendingBinaryPlaceholder = null;
-            $session->pendingBinaryCount = 0;
-        }
-    }
-    
-    /**
-     * 从包中提取二进制附件数量
-     * 格式如: 51-/chat,["blob",{"_placeholder":true,"num":0}] 中的 "51" 表示 BINARY_EVENT, 1个附件
-     */
-    private function extractBinaryAttachmentCount(string $data): int
-    {
-        // 先尝试匹配 Engine.IO + Socket.IO 格式：451-... 或 451/...
-        if (preg_match('/^4(\d)(\d+)/', $data, $matches)) {
-            // 第一个数字是Socket.IO类型，第二个数字是附件数量
-            return (int)$matches[2];
-        }
-        
-        // 再尝试匹配纯Socket.IO格式：51-... 或 51/...
-        if (preg_match('/^(\d)(\d+)/', $data, $matches)) {
-            // 第一个数字是Socket.IO类型，第二个数字是附件数量
-            return (int)$matches[2];
-        }
-        
-        // 如果没有找到，尝试从占位符中推断（取最大的num+1）
-        if (preg_match_all('/"num":\s*(\d+)/', $data, $matches)) {
-            $nums = array_map('intval', $matches[1]);
-            return max($nums) + 1;
-        }
-        
-        return 1; // 默认至少有一个附件
-    }
-    
-    /**
-     * 从数据中提取占位符编号
-     */
-    private function extractPlaceholderNum(string $data): int
-    {
-        if (preg_match('/"num":\s*(\d+)/', $data, $matches)) {
-            return (int)$matches[1];
-        }
-        return 0;
     }
     
     /**

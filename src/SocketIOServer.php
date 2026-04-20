@@ -285,7 +285,7 @@ class SocketIOServer
                     $packet['args'] ?? (is_array($data) ? $data : [$data]),
                     $packet['id'] ?? null
                 ),
-                'ACK', 'BINARY_ACK' => $this->handleAckPacket($connection, $session, $namespace, $data),
+                'ACK', 'BINARY_ACK' => $this->handleAckPacket($connection, $session, $namespace, $data, $packet['id'] ?? null),
                 'ERROR' => $this->handleErrorPacket($connection, $session, $namespace, $data),
             };
         } catch (\Exception $e) {
@@ -392,20 +392,17 @@ class SocketIOServer
             $this
         );
         
-        // 发送连接确认包
-        $sessionData = [
-            'sid' => $session->sid,
-            'upgrades' => [],
-            'pingInterval' => $this->engineIoHandler->getPingInterval(),
-            'pingTimeout' => $this->engineIoHandler->getPingTimeout(),
-            'maxPayload' => 1000000
-        ];
+        // 构建 Socket.IO v4 标准连接确认包
+        $socketIoPacket = PacketParser::buildSocketIOPacket('CONNECT', [
+            'namespace' => $namespace,
+            'data' => [
+                'sid' => $session->sid
+            ]
+        ]);
         
-        $connectAck = $namespace === '/' 
-            ? '40' . json_encode($sessionData)
-            : '40' . $namespace . ',' . json_encode($sessionData);
-        
-        $session->send($connectAck);
+        // 包装为 Engine.IO 4 类型包发送
+        $engineIoPacket = '4' . $socketIoPacket;
+        $session->send($engineIoPacket);
     }
     
     /**
@@ -454,10 +451,28 @@ class SocketIOServer
     /**
      * 处理ACK包
      */
-    private function handleAckPacket($connection, $session, $namespace, $data)
+    private function handleAckPacket($connection, $session, $namespace, $data, ?int $ackId = null): void
     {
-        echo "[socketio] ACK包: {$namespace}\n";
-        // TODO: 实现ACK回调处理
+        echo "[socketio] ACK包: {$namespace}, ackId=" . ($ackId ?? 'null') . "\n";
+        
+        if ($ackId === null) {
+            return;
+        }
+        
+        // 优先从 EventHandler 查找 ACK 回调
+        if ($this->eventHandler && method_exists($this->eventHandler, 'executeAckCallback')) {
+            $this->eventHandler->executeAckCallback($ackId, $data);
+            return;
+        }
+        
+        // 也从 Session 中查找 ACK 回调
+        if (isset($session->ackCallbacks) && is_array($session->ackCallbacks)) {
+            if (isset($session->ackCallbacks[$ackId]) && is_callable($session->ackCallbacks[$ackId])) {
+                $callback = $session->ackCallbacks[$ackId];
+                $callback(...$data);
+                unset($session->ackCallbacks[$ackId]);
+            }
+        }
     }
     
     /**

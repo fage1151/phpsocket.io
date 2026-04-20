@@ -993,6 +993,35 @@ class EventHandler
         $callbackKey = "{$socket['id']}:{$namespace}:{$ackId}";
         $this->ackCallbacks[$callbackKey] = $callback;
     }
+    
+    /**
+     * 执行ACK回调函数
+     * @param int $ackId ACK ID
+     * @param array $data ACK数据
+     */
+    public function executeAckCallback(int $ackId, $data): bool
+    {
+        // 查找所有匹配的ACK回调
+        foreach ($this->ackCallbacks as $key => $callback) {
+            if (strpos($key, ":{$ackId}") !== false) {
+                // 找到回调，执行它
+                $ackArgs = is_array($data) ? $data : [$data];
+                
+                try {
+                    echo "[eventhandler] 执行ACK回调: ACK_ID={$ackId}\n";
+                    call_user_func_array($callback, $ackArgs);
+                    unset($this->ackCallbacks[$key]);
+                    return true;
+                } catch (\Exception $e) {
+                    echo "[eventhandler] ACK回调执行失败: " . $e->getMessage() . "\n";
+                    return false;
+                }
+            }
+        }
+        
+        echo "[eventhandler] 未找到ACK回调: ACK_ID={$ackId}\n";
+        return false;
+    }
 
     /**
      * 获取所有连接的socket
