@@ -263,15 +263,20 @@ class PacketParser
         // Socket.IO v4协议标准解析算法
         $dataArgs = [];
         $foundNamespace = false;
+        $totalElements = count($decoded);
         
-        // 收集所有数据参数
-        for ($i = 2; $i < count($decoded); $i++) {
+        // 收集所有数据参数（除了最后一个可能的ACK ID）
+        for ($i = 2; $i < $totalElements; $i++) {
             if (!isset($decoded[$i])) continue;
             
             $element = $decoded[$i];
             
+            // 检查是否是最后一个元素且是数字（可能是ACK ID）
+            if ($i === $totalElements - 1 && is_numeric($element)) {
+                $packet['id'] = (int)$element;
+            } 
             // 检查是否为命名空间格式（如"/namespace"）
-            if (is_string($element) && $element !== '/' && strpos($element, '/') === 0 && strlen($element) > 1) {
+            else if (is_string($element) && $element !== '/' && strpos($element, '/') === 0 && strlen($element) > 1) {
                 // 命名空间标记：必须以"/"开头且不是根命名空间
                 $packet['namespace'] = $element;
                 $foundNamespace = true;
@@ -290,6 +295,9 @@ class PacketParser
         $packet['data'] = $dataArgs;
         
         echo "[packet] 事件数据解析 (格式1): event={$packet['event']}, data=" . json_encode($packet['data']) . ", namespace={$packet['namespace']}" . "\n";
+        if (isset($packet['id'])) {
+            echo "[packet] 提取到ACK ID: {$packet['id']}\n";
+        }
     }
     
     /**

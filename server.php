@@ -56,10 +56,12 @@ $io->on('connection', function ($socket) use ($io) {
         $socket->emitWithAck('ackResponse', 'Server ACK response', function($userdata){
             // 处理客户端的ACK回调
         });
+        return ['status' => 'ok'];
     });
 
     // 二进制数据处理
     $socket->on('buffer', function ($msg) use ($socket) {
+        var_dump($msg);
         $socket->emitBinary('binaryResponse', $msg, ['status' => 'ok']);
     });
     
@@ -108,7 +110,7 @@ $io->on('connection', function ($socket) use ($io) {
     // 请求二进制数据
     $socket->on('reqBinary', function ($data) use ($socket) {
         $binaryData = "Hello binary world!";
-        $socket->emitBinary('binaryResponse', $binaryData);
+        $socket->emitBinary('binaryResponse', $data);
     });
 
     // 类型化数组处理

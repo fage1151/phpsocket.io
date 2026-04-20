@@ -297,4 +297,42 @@ class Session
     {
         return (time() - $this->lastPong) < self::$sessionTtl;
     }
+    
+    /**
+     * 保存会话（兼容性方法）
+     */
+    public function save(): void
+    {
+        // 会话已经在构造函数中存储在 static::$sessions 中
+        echo "[session] saved sid={$this->sid}\n";
+    }
+    
+    /**
+     * 关闭会话
+     */
+    public function close(): void
+    {
+        echo "[session] closing sid={$this->sid}\n";
+        
+        // 关闭 WebSocket 连接（如果存在）
+        if ($this->connection) {
+            try {
+                $this->connection->close();
+            } catch (Exception $e) {
+                echo "[session] error closing connection: " . $e->getMessage() . "\n";
+            }
+        }
+        
+        // 离开所有房间
+        global $io;
+        if (isset($io) && method_exists($io, 'getRoomManager')) {
+            $roomManager = $io->getRoomManager();
+            if ($roomManager) {
+                $roomManager->removeSession($this->sid);
+            }
+        }
+        
+        // 从会话池中移除
+        self::remove($this->sid);
+    }
 }

@@ -92,6 +92,14 @@ class SocketIOServer
     {
         return $this->serverManager->hasCluster();
     }
+    
+    /**
+     * 检查是否启用集群模式（标准方法）
+     */
+    public function isClusterEnabled(): bool
+    {
+        return $this->serverManager->isClusterEnabled();
+    }
 
     /**
      * 声明事件监听器回调函数 (支持多参数)
@@ -253,6 +261,18 @@ class SocketIOServer
             $type = $packet['type'];
             $data = $packet['data'] ?? [];
             
+            // 处理二进制事件：先存储占位符，等待二进制附件
+            if ($type === 'BINARY_EVENT' && isset($packet['binaryCount']) && $packet['binaryCount'] > 0) {
+                echo "[socketio] 收到二进制事件包，存储占位符，等待 {$packet['binaryCount']} 个附件\n";
+                $session->pendingBinaryPlaceholder = [
+                    'packet' => $message,
+                    'timestamp' => time()
+                ];
+                $session->pendingBinaryCount = $packet['binaryCount'];
+                // 先不处理事件，等待二进制附件到达后再一起处理
+                return;
+            }
+            
             // 根据包类型处理
             match ($type) {
                 'CONNECT' => $this->handleConnectPacket($connection, $session, $namespace, $data),
@@ -282,20 +302,69 @@ class SocketIOServer
         echo "[socketio] 收到二进制消息, 大小: " . strlen($binaryData) . " 字节\n";
         
         // 检查是否有待处理的占位符包
-        if (isset($session->pendingBinaryPlaceholder)) {
+        if (isset($session->pendingBinaryPlaceholder) && $session->pendingBinaryCount > 0) {
             $placeholderInfo = $session->pendingBinaryPlaceholder;
             $placeholderPacket = $placeholderInfo['packet'];
-            $placeholderNum = $placeholderInfo['num'] ?? 0;
             
-            echo "[socketio] 结合占位符包处理二进制数据, placeholder_num={$placeholderNum}\n";
+            // 收集二进制附件
+            $attachmentIndex = count($session->pendingBinaryAttachments);
+            $session->pendingBinaryAttachments[$attachmentIndex] = $binaryData;
+            echo "[socketio] 收集二进制附件 {$attachmentIndex}/{$session->pendingBinaryCount}\n";
             
-            // 使用 EngineIOHandler 处理二进制数据
-            $this->engineIoHandler->processBinaryData($session, $placeholderPacket, $binaryData, $placeholderNum);
+            // 检查是否所有附件都已收到
+            if (count($session->pendingBinaryAttachments) >= $session->pendingBinaryCount) {
+                echo "[socketio] 所有二进制附件已收到，开始处理完整事件\n";
+                
+                // 合并处理所有附件
+                $this->combineAndProcessBinaryAttachments($session, $connection);
+                
+                // 清理
+                $session->pendingBinaryAttachments = [];
+                $session->pendingBinaryPlaceholder = null;
+                $session->pendingBinaryCount = 0;
+            }
         } else {
             // 没有占位符包，直接处理二进制数据
             echo "[socketio] 没有待处理的占位符包，将二进制数据作为独立附件处理\n";
             // 这里可以添加独立二进制数据的处理逻辑
         }
+    }
+    
+    /**
+     * 合并所有二进制附件并处理完整事件
+     */
+    private function combineAndProcessBinaryAttachments(Session $session, $connection): void
+    {
+        $placeholderInfo = $session->pendingBinaryPlaceholder;
+        $originalPacket = $placeholderInfo['packet'] ?? null;
+        
+        if (!$originalPacket) {
+            echo "[binary] no original packet found for placeholder\n";
+            return;
+        }
+        
+        // 解析占位符包
+        $packet = PacketParser::parseSocketIOPacket($originalPacket);
+        if (!$packet) {
+            echo "[binary] failed to parse placeholder packet\n";
+            return;
+        }
+        
+        // 替换二进制占位符
+        $packet = PacketParser::replaceBinaryPlaceholders($packet, $session->pendingBinaryAttachments);
+        
+        echo "[binary] 处理完整的二进制事件: " . $packet['event'] . "\n";
+        
+        // 处理事件
+        $namespace = $packet['namespace'] ?? '/';
+        $this->handleEventPacket(
+            $connection,
+            $session,
+            $namespace,
+            $packet['event'] ?? 'unknown',
+            $packet['args'] ?? (isset($packet['data']) ? (is_array($packet['data']) ? $packet['data'] : [$packet['data']]) : []),
+            $packet['id'] ?? null
+        );
     }
     
     /**
@@ -499,15 +568,18 @@ class SocketIOServer
     {
         $roomMembers = $this->roomManager->getRoomMembers($room);
         
+        // 构建消息包一次，避免重复构建
+        $dummySocket = new Socket('', '/', $this);
+        $messagePacket = $dummySocket->buildEventPacket($event, $args);
+        
         // 向房间内所有成员发送消息
         foreach ($roomMembers as $sid) {
             // 获取会话
             $session = Session::get($sid);
             if (!$session) continue;
             
-            // 创建Socket实例并发送消息
-            $socket = new Socket($sid, '/', $this);
-            $socket->emit($event, ...$args);
+            // 直接发送消息包，避免重复创建Socket实例
+            $session->send($messagePacket);
         }
         
         return $this;

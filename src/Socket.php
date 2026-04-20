@@ -107,12 +107,15 @@ class Socket
         }
         // 收集二进制附件并替换为占位符
         [$binaryAttachments, $processedArgs] = $this->processBinaryData($args);
+        // 构建二进制事件包前缀（根据附件数量）
+        $binaryCount = count($binaryAttachments);
+        $prefix = '45' . $binaryCount . '-';
         // 构建并发送二进制事件包
         $eventData = array_merge([$event], $processedArgs);
         $socketIOPacket = json_encode($eventData);
-        $packetData = $this->buildPacket('451-', $socketIOPacket);
+        $packetData = $this->buildPacket($prefix, $socketIOPacket);
         
-        if ($this->session?->connection) {
+        if ($this->session) {
             // 发送文本包（包含占位符）
             $this->session->send($packetData);
             
@@ -174,7 +177,7 @@ class Socket
      */
     private function send(string $packetData, string $event): void
     {
-        $this->session?->connection && $this->session->send($packetData);
+        $this->session && $this->session->send($packetData);
     }
     
     /**
@@ -185,6 +188,24 @@ class Socket
         foreach ($binaryAttachments as $binaryData) {
             $this->session->sendBinary($binaryData);
         }
+    }
+    
+    /**
+     * 发送带ACK的事件
+     */
+    private function emitAckEvent(string $event, int $ackId, mixed ...$args): self
+    {
+        // 构建事件数据（包含ACK ID）
+        $eventData = array_merge([$event], $args, [$ackId]);
+        $socketIOPacket = json_encode($eventData);
+        $packetData = $this->buildPacket('42', $socketIOPacket);
+        
+        if ($this->session) {
+            // 发送带ACK的事件包
+            $this->session->send($packetData);
+        }
+        
+        return $this;
     }
 
     /**
@@ -379,19 +400,23 @@ class Socket
         // 生成ACK ID
         $ackId = $this->session ? count($this->session->ackCallbacks) + 1 : 1;
         
-        // 存储回调函数
-        if ($this->session && $callback) {
-            $this->session->ackCallbacks[$ackId] = $callback;
-            
-            // 设置超时
-            if ($this->timeout !== null) {
-                $timeoutMs = $this->timeout;
-                $originalAckId = $ackId;
-                $originalSession = $this->session;
+        // 存储回调函数（同时在Session和EventHandler中都存储）
+        if ($callback) {
+            // 在Session中存储（用于内部引用）
+            if ($this->session) {
+                $this->session->ackCallbacks[$ackId] = $callback;
                 
-                // 在PHP中，我们需要手动处理超时
-                // 这里我们只是记录超时时间，实际超时检查在收到ACK或断开连接时处理
-                $this->session->ackCallbacks[$ackId . '_timeout'] = time() + ($timeoutMs / 1000);
+                // 设置超时
+                if ($this->timeout !== null) {
+                    $timeoutMs = $this->timeout;
+                    $this->session->ackCallbacks[$ackId . '_timeout'] = time() + ($timeoutMs / 1000);
+                }
+            }
+            
+            // 在EventHandler中存储（用于实际调用）
+            if ($this->server && $this->server->getEventHandler()) {
+                $socket = ['id' => $this->sid, 'namespace' => $this->namespace];
+                $this->server->getEventHandler()->storeAckCallback($socket, $this->namespace, $ackId, $callback);
             }
         }
         
@@ -399,10 +424,8 @@ class Socket
         $this->timeout = null;
         $this->exceptRooms = [];
         
-        // 发送带ACK ID的事件
-        $allArgs = $args;
-        $allArgs[] = $ackId;
-        return $this->emit($event, ...$allArgs);
+        // 构建带ACK的事件包
+        return $this->emitAckEvent($event, $ackId, ...$args);
     }
 
     /**
