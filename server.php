@@ -118,7 +118,8 @@ $io->on('connection', function ($socket) use ($io) {
 
     // 多ACK测试
     for ($i = 1; $i <= 3; $i++) {
-        $socket->on("ack{$i}", function ($data) use ($socket, $i) {
+        $eventName = "ack{$i}";
+        $socket->on($eventName, function ($data) use ($socket, $i) {
             $socket->emit("ack{$i}", "Response for ack{$i}");
         });
     }

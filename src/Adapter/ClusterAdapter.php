@@ -2,9 +2,6 @@
 
 namespace PhpSocketIO\Adapter;
 
-use Channel\Client as ChannelClient;
-use Channel\Server as ChannelServer;
-
 /**
  * 基于Workerman\Channel的集群适配器
  * 支持跨进程/集群Socket.IO消息传递
@@ -87,14 +84,27 @@ class ClusterAdapter implements AdapterInterface
      */
     
     /**
+     * 获取Channel客户端类名（动态检查）
+     */
+    private function getChannelClientClass(): string
+    {
+        if (!class_exists('Channel\Client')) {
+            throw new \RuntimeException('Channel client not found. Please install workerman/channel via composer: composer require workerman/channel');
+        }
+        return 'Channel\Client';
+    }
+    
+    /**
      * 初始化Channel客户端，实现连接池管理
      */
     private function initChannelClient(): void
     {
+        $channelClientClass = $this->getChannelClientClass();
+        
         try {
             // 连接到Channel服务器，实现连接池管理
             $connectionKey = $this->config['channel_ip'] . ':' . $this->config['channel_port'];
-            ChannelClient::connect($this->config['channel_ip'], $this->config['channel_port']);
+            $channelClientClass::connect($this->config['channel_ip'], $this->config['channel_port']);
             
             echo "[adapter] Channel client connected to {$connectionKey}\n";
         } catch (\Exception $e) {
@@ -103,42 +113,42 @@ class ClusterAdapter implements AdapterInterface
         }
         
         // 订阅广播频道
-        ChannelClient::on($this->prefix . 'broadcast', function($packet) {
+        $channelClientClass::on($this->prefix . 'broadcast', function($packet) {
             $this->handleBroadcast($packet);
         });
         
         // 订阅房间广播频道
-        ChannelClient::on($this->prefix . 'room', function($data) {
+        $channelClientClass::on($this->prefix . 'room', function($data) {
             $this->handleRoomMessage($data);
         });
         
         // 订阅成员管理频道
-        ChannelClient::on($this->prefix . 'member', function($data) {
+        $channelClientClass::on($this->prefix . 'member', function($data) {
             $this->handleMemberChange($data);
         });
         
         // 订阅单发消息频道
-        ChannelClient::on($this->prefix . 'send', function($data) {
+        $channelClientClass::on($this->prefix . 'send', function($data) {
             $this->handleSendMessage($data);
         });
         
         // 订阅会话进程注册频道（用于跨进程会话映射）
-        ChannelClient::on($this->prefix . 'session_register', function($data) {
+        $channelClientClass::on($this->prefix . 'session_register', function($data) {
             $this->handleSessionRegister($data);
         });
         
         // 订阅会话查询频道（用于跨进程会话发现）
-        ChannelClient::on($this->prefix . 'session_query', function($data) {
+        $channelClientClass::on($this->prefix . 'session_query', function($data) {
             $this->handleSessionQuery($data);
         });
         
         // 订阅会话查询响应频道
-        ChannelClient::on($this->prefix . 'session_response', function($data) {
+        $channelClientClass::on($this->prefix . 'session_response', function($data) {
             $this->handleSessionResponse($data);
         });
         
         // 订阅会话探测频道
-        ChannelClient::on($this->prefix . 'session_probe', function($data) {
+        $channelClientClass::on($this->prefix . 'session_probe', function($data) {
             $this->handleSessionProbe($data);
         });
         
@@ -824,7 +834,8 @@ class ClusterAdapter implements AdapterInterface
         $this->sessionProcessMap[$sid] = $this->processId;
         
         // 通知其他进程会话注册信息
-        ChannelClient::publish($this->prefix . 'session_register', [
+        $channelClientClass = $this->getChannelClientClass();
+        $channelClientClass::publish($this->prefix . 'session_register', [
             'sid' => $sid,
             'process_id' => $this->processId,
             'timestamp' => microtime(true)
@@ -879,7 +890,8 @@ class ClusterAdapter implements AdapterInterface
         // 检查会话是否在本地
         if ($this->isSessionLocal($sid)) {
             // 响应查询请求者
-            ChannelClient::publish($this->prefix . 'session_response', [
+            $channelClientClass = $this->getChannelClientClass();
+            $channelClientClass::publish($this->prefix . 'session_response', [
                 'sid' => $sid,
                 'query_id' => $queryId,
                 'responder' => $this->processId,
@@ -946,7 +958,8 @@ class ClusterAdapter implements AdapterInterface
         
         // 只有在会话确实在本地时才响应
         if ($this->isSessionLocal($sid)) {
-            ChannelClient::publish($this->prefix . 'session_response', [
+            $channelClientClass = $this->getChannelClientClass();
+            $channelClientClass::publish($this->prefix . 'session_response', [
                 'sid' => $sid,
                 'query_id' => $probeId,
                 'process_id' => $this->processId,
@@ -967,7 +980,8 @@ class ClusterAdapter implements AdapterInterface
                 return;
             }
             
-            ChannelClient::publish($this->prefix . 'session_heartbeat', [
+            $channelClientClass = $this->getChannelClientClass();
+            $channelClientClass::publish($this->prefix . 'session_heartbeat', [
                 'process_id' => $this->processId,
                 'sessions' => array_keys($this->sessionProcessMap),
                 'timestamp' => microtime(true)
@@ -1053,17 +1067,18 @@ class ClusterAdapter implements AdapterInterface
      */
     private function publishBatch(string $channel, array $data, bool $urgent = false): void
     {
+        $channelClientClass = $this->getChannelClientClass();
         // 心跳消息需要立即发送，不加入队列
         if ($urgent || strpos($channel, 'heartbeat') !== false || strpos($channel, 'session_') !== false) {
             try {
-                ChannelClient::publish($channel, $data);
+                $channelClientClass::publish($channel, $data);
                 return;
             } catch (\Exception $e) {
                 echo "[adapter] Urgent publish failed: " . $e->getMessage() . "\n";
                 // 重新连接并重试
                 $this->initChannelClient();
                 try {
-                    ChannelClient::publish($channel, $data);
+                    $channelClientClass::publish($channel, $data);
                 } catch (\Exception $e2) {
                     echo "[adapter] Retry failed, dropping urgent message: " . $e2->getMessage() . "\n";
                 }
@@ -1127,10 +1142,11 @@ class ClusterAdapter implements AdapterInterface
         
         $messages = array_splice($this->messageQueue, 0, $this->maxBatchSize);
         $batchCount = count($messages);
+        $channelClientClass = $this->getChannelClientClass();
         
         try {
             foreach ($messages as $message) {
-                ChannelClient::publish($message['channel'], $message['data']);
+                $channelClientClass::publish($message['channel'], $message['data']);
             }
             
             if ($batchCount > 1) {
@@ -1159,9 +1175,10 @@ class ClusterAdapter implements AdapterInterface
     private function checkChannelHealth(): bool
     {
         try {
+            $channelClientClass = $this->getChannelClientClass();
             // 发送一个测试消息检查连接状态
             $testData = ['test' => 'health_check', 'timestamp' => microtime(true)];
-            ChannelClient::publish($this->prefix . 'health_check', $testData);
+            $channelClientClass::publish($this->prefix . 'health_check', $testData);
             return true;
         } catch (\Exception $e) {
             echo "[adapter] Health check failed: " . $e->getMessage() . "\n";

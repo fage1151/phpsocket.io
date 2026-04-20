@@ -2,8 +2,6 @@
 
 namespace PhpSocketIO\Adapter;
 
-use Workerman\Redis\Client;
-
 /**
  * 基于Redis的集群适配器
  * 支持跨进程/集群Socket.IO消息传递
@@ -13,7 +11,7 @@ class RedisAdapter implements AdapterInterface
     /** @var array 配置参数 */
     private $config;
     
-    /** @var Client Redis客户端实例 */
+    /** @var object Redis客户端实例 */
     private $redis;
     
     /** @var array 房间成员映射表 [room => [sid1, sid2, ...]] */
@@ -60,6 +58,17 @@ class RedisAdapter implements AdapterInterface
     }
     
     /**
+     * 获取Redis客户端类名（动态检查）
+     */
+    private function getRedisClientClass(): string
+    {
+        if (!class_exists('Workerman\Redis\Client')) {
+            throw new \RuntimeException('Redis client not found. Please install workerman/redis via composer: composer require workerman/redis');
+        }
+        return 'Workerman\Redis\Client';
+    }
+
+    /**
      * 初始化适配器
      * @param array $config 配置参数（可选，用于覆盖构造函数中的配置）
      */
@@ -86,6 +95,7 @@ class RedisAdapter implements AdapterInterface
      */
     private function connectRedis(): void
     {
+        $redisClientClass = $this->getRedisClientClass();
         $attempt = 0;
         $maxAttempts = $this->reconnectAttempts;
         
@@ -95,7 +105,7 @@ class RedisAdapter implements AdapterInterface
                 $redisUrl = "redis://{$this->config['host']}:{$this->config['port']}";
                 
                 // 连接Redis
-                $this->redis = new Client($redisUrl, [
+                $this->redis = new $redisClientClass($redisUrl, [
                     'connect_timeout' => 10
                 ]);
                 
@@ -481,11 +491,12 @@ class RedisAdapter implements AdapterInterface
      */
     private function subscribeToChannels(): void
     {
+        $redisClientClass = $this->getRedisClientClass();
         // 构建Redis连接URL
         $redisUrl = "redis://{$this->config['host']}:{$this->config['port']}";
         
         // 创建专门用于订阅的Redis客户端
-        $this->subscriber = new \Workerman\Redis\Client($redisUrl, [
+        $this->subscriber = new $redisClientClass($redisUrl, [
             'connect_timeout' => 10
         ]);
         
@@ -604,6 +615,6 @@ class RedisAdapter implements AdapterInterface
         // 因为每个进程都维护自己的本地房间和会话信息
     }
     
-    /** @var Client 用于订阅的Redis客户端实例 */
+    /** @var object 用于订阅的Redis客户端实例 */
     private $subscriber;
 }

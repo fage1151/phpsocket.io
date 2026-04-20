@@ -6,6 +6,10 @@
         "php": ">8.0",
         "workerman/workerman": "^4.1"
     },
+    "require-dev": {
+        "workerman/channel": "^1.0",
+        "workerman/redis": "^2.0.3"
+    },
     "autoload": {
         "psr-4": {
             "PhpSocketIO\\": "src/"

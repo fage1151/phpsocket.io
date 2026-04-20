@@ -105,7 +105,6 @@ class Socket
         if (empty($event)) {
             throw new \InvalidArgumentException("事件名称不能为空");
         }
-        var_dump($args);
         // 收集二进制附件并替换为占位符
         [$binaryAttachments, $processedArgs] = $this->processBinaryData($args);
         // 构建并发送二进制事件包

@@ -405,7 +405,7 @@ class EventHandler
             // 集群环境下自动注册会话
             if ($serverManager && $serverManager->isClusterEnabled() && $adapter) {
                 try {
-                    $adapter->registerSession($socket['id']);
+                    $adapter->register($socket['id']);
                     echo "[cluster] session registered for sid={$socket['id']}\n";
                 } catch (\Exception $e) {
                     echo "[cluster] session registration failed: " . $e->getMessage() . "\n";
@@ -481,9 +481,9 @@ class EventHandler
         }
         
         // 执行会话注销
-        if ($adapter && method_exists($adapter, 'unregisterSession')) {
+        if ($adapter && method_exists($adapter, 'unregister')) {
             try {
-                $adapter->unregisterSession($socketId);
+                $adapter->unregister($socketId);
                 echo "[cluster] session unregistered for sid={$socketId}\n";
             } catch (\Exception $e) {
                 echo "[cluster] session unregistration failed: " . $e->getMessage() . "\n";

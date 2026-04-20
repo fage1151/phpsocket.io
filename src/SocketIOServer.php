@@ -368,10 +368,9 @@ class SocketIOServer
             $socket = $this->sessionSocketMap[$sessionKey] ??= new Socket($session->sid, $namespace, $this);
             
             // 确保Session对象包含connection属性并同步WebSocket状态
-            if ($session->connection = $connection) {
-                $session->transport = 'websocket';
-                $session->isWs = true;
-            }
+            $session->connection = $connection;
+            $session->transport = 'websocket';
+            $session->isWs = true;
             
             // 处理事件
             if (!$this->eventHandler->triggerEventWithAck($session, $namespace, $eventName, $eventArgs, $ackId)) {
