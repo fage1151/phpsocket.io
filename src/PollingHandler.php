@@ -62,15 +62,6 @@ class PollingHandler
             'Content-Type' => 'text/plain; charset=UTF-8',
         ], $body);
 
-        $session->namespaces['/'] = [];
-        
-        // 触发连接事件
-        $socket = ['nsp' => '/', 'id' => $session->sid];
-        $eventHandler = $this->engineIoHandler->getEventHandler();
-        if ($eventHandler) {
-            $eventHandler->triggerConnect($socket, '/');
-        }
-
         echo "[connect] polling sid={$session->sid}\n";
     }
 

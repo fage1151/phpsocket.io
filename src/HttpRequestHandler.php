@@ -441,13 +441,18 @@ class HttpRequestHandler
         $connection->sid = $sid;
         $session->connection = $connection;
         $session->transport = 'websocket';
+        $session->isWs = true;
 
         // 执行WebSocket握手
         $this->performWebSocketHandshake($connection, $req, $sid);
         
-        // 清除轮询队列并升级到WebSocket
-        $session->flush();
-        echo "[upgrade] session upgraded to WebSocket: {$sid}\n";
+        // 发送队列里的所有消息，不要直接清空
+        $messages = $session->flush();
+        foreach ($messages as $msg) {
+            $session->send($msg);
+        }
+        
+        echo "[upgrade] session upgraded to WebSocket: {$sid}, sent " . count($messages) . " queued messages\n";
 
         return true;
     }

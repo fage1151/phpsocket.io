@@ -83,7 +83,20 @@ class EngineIOHandler
             case 'binary':
                 return $this->handleBinary($packet, $connection, $session);
             case 'upgrade':
-                return true; // 客户端发送"5"表示升级完成确认，无需特殊处理
+                // 客户端发送"5"表示升级完成确认
+                $session->upgraded = true;
+                echo "[engineio] received upgrade confirmation from sid={$session->sid}\n";
+                
+                // 先发送队列里的所有消息
+                $messages = $session->flush();
+                foreach ($messages as $msg) {
+                    $session->send($msg);
+                }
+                echo "[engineio] sent " . count($messages) . " queued messages after upgrade\n";
+                
+                // 协议要求：升级完成后发送一个 noop (6) 包
+                $connection->send('6');
+                return true;
             case 'noop':
                 return true; // 忽略空操作
             default:
@@ -390,6 +403,14 @@ class EngineIOHandler
         // 获取会话对应的连接
         if (!$session->connection) {
             echo "[engineio] No connection available for WebSocket session: {$session->sid}\n";
+            return;
+        }
+        
+        // 在升级完成前，只允许处理升级相关的包
+        // 允许的包类型：ping(2), pong(3), upgrade(5), noop(6)
+        $allowedTypesBeforeUpgrade = ['ping', 'pong', 'upgrade', 'noop'];
+        if (!$session->upgraded && !in_array($packet['type'], $allowedTypesBeforeUpgrade)) {
+            echo "[engineio] Waiting for upgrade confirmation (sid={$session->sid}), ignoring packet: type={$packet['type']}\n";
             return;
         }
         

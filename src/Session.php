@@ -19,6 +19,7 @@ class Session
     public int $lastPong;                 // 最后心跳时间
     public int $lastPing;                 // 最后发送ping时间
     public bool $isWs         = false;     // 是否WebSocket连接
+    public bool $upgraded     = false;     // 是否已完成协议升级
     public int $createdAt;                // 创建时间戳
     public int $messageCount = 0;         // 消息计数
     public int $errorCount   = 0;         // 错误计数
@@ -113,6 +114,12 @@ class Session
             if (!$this->isWs) {
                 $this->isWs = true;
                 $this->transport = 'websocket';
+            }
+            
+            // 如果升级还未完成，先将消息加入队列，等升级完成后再发送
+            if (!$this->upgraded) {
+                $this->enqueue($packet);
+                return true;
             }
             
             // 检查连接是否有效
