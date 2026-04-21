@@ -988,6 +988,9 @@ class SocketIOServer
         // 如果没有缓存，创建新的 Socket 实例
         $socket = new Socket($sid, $namespace, $this);
         $socket->session = $session;
+        
+        // 缓存 Socket 实例以便复用
+        $this->sessionSocketMap[$sessionKey] = $socket;
         return $socket;
     }
     

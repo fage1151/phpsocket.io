@@ -260,7 +260,7 @@ class EventHandler
         if ($socketIOServer && $hasRealHandler && method_exists($socketIOServer, 'getSocketIoCallback')) {
             // 通过SocketIOServer注册的处理器 - 优先执行路径
             $serverManager = $socketIOServer->getServerManager();
-            $roomManager = new \PhpSocketIO\RoomManager();
+            $roomManager = $socketIOServer->getRoomManager();
             $adapter = $serverManager ? $serverManager->getAdapter() : null;
             
             // 创建唯一的Socket类实例来注册事件监听器

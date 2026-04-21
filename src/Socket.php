@@ -23,7 +23,7 @@ class Socket
     public mixed $headers;      // HTTP头信息（如果有）
     public array $data = [];    // 任意数据对象 (v4.0.0+)
 
-    public ?Broadcaster $broadcast = null;
+    private ?Broadcaster $_broadcaster = null; // 内部广播器实例
 
     /**
      * 魔术方法，保持兼容性
@@ -32,6 +32,9 @@ class Socket
     {
         if ($name === 'id') {
             return $this->sid;
+        }
+        if ($name === 'broadcast') {
+            return $this->_broadcaster;
         }
         return null;
     }
@@ -55,8 +58,8 @@ class Socket
             $this->data = &$this->session->data; // 引用，保持同步
         }
         
-        // 初始化broadcast属性，使用统一的Broadcaster
-        $this->broadcast = new Broadcaster($server, $namespace, $this);
+        // 初始化内部广播器
+        $this->_broadcaster = new Broadcaster($server, $namespace, $this);
     }
 
     /**
@@ -94,9 +97,12 @@ class Socket
      */
     public function buildEventPacket(string $event, array $args): string
     {
-        $eventData = array_merge([$event], $args);
-        $socketIOPacket = json_encode($eventData);
-        return $this->buildPacket('42', $socketIOPacket);
+        $socketIOPacket = PacketParser::buildSocketIOPacket('EVENT', [
+            'namespace' => $this->namespace,
+            'event' => $event,
+            'data' => $args
+        ]);
+        return '4' . $socketIOPacket;
     }
 
     /**
@@ -109,16 +115,18 @@ class Socket
         }
         // 收集二进制附件并替换为占位符
         [$binaryAttachments, $processedArgs] = $this->processBinaryData($args);
-        // 构建二进制事件包（Socket.IO v4标准格式）
+        // 使用PacketParser构建二进制事件包
         $binaryCount = count($binaryAttachments);
-        $namespacePart = $this->namespace !== '/' ? $this->namespace . ',' : '';
-        $eventData = array_merge([$event], $processedArgs);
-        $socketIOPacket = json_encode($eventData);
-        $packetData = '45' . $binaryCount . '-' . $namespacePart . $socketIOPacket;
+        $socketIOPacket = PacketParser::buildSocketIOPacket('BINARY_EVENT', [
+            'namespace' => $this->namespace,
+            'binaryCount' => $binaryCount,
+            'event' => $event,
+            'data' => $processedArgs
+        ]);
         
         if ($this->session) {
             // 发送文本包（包含占位符）
-            $this->session->send($packetData);
+            $this->session->send('4' . $socketIOPacket);
             
             // 发送二进制附件
             $this->sendBinaryData($binaryAttachments);
@@ -162,16 +170,7 @@ class Socket
         return [$binaryAttachments, $processedArgs];
     }
     
-    /**
-     * 构建Engine.IO数据包
-     */
-    private function buildPacket(string $prefix, string $socketIOPacket): string
-    {
-        $namespacePart = $this->namespace !== '/' ? $this->namespace . ',' : '';
-        
-        // 普通事件格式
-        return $prefix . $namespacePart . $socketIOPacket;
-    }
+
     
     /**
      * 发送消息
@@ -196,15 +195,17 @@ class Socket
      */
     private function emitAckEvent(string $event, int $ackId, mixed ...$args): self
     {
-        $namespacePart = $this->namespace !== '/' ? $this->namespace . ',' : '';
-        $eventData = array_merge([$event], $args);
-        $socketIOPacket = json_encode($eventData);
-        // Socket.IO v4 标准格式：42[namespace,][ackId][event, args]
-        $packetData = '42' . $namespacePart . $ackId . $socketIOPacket;
+        // 使用PacketParser构建带ACK的事件包
+        $socketIOPacket = PacketParser::buildSocketIOPacket('EVENT', [
+            'namespace' => $this->namespace,
+            'event' => $event,
+            'data' => $args,
+            'id' => $ackId
+        ]);
         
         if ($this->session) {
             // 发送带ACK的事件包
-            $this->session->send($packetData);
+            $this->session->send('4' . $socketIOPacket);
         }
         
         return $this;
@@ -224,7 +225,7 @@ class Socket
             return true;
         }
         
-        // 快速检查2：检查是否包含非 UTF-8 字符或控制字符
+        // 快速检查2：检查是否包含控制字符（除了常见的空白字符）
         $length = strlen($data);
         $controlCharCount = 0;
         $checkLength = min($length, 100);
@@ -242,8 +243,21 @@ class Socket
             return true;
         }
         
-        // 最后检查 JSON 编码是否成功（排除无法 JSON 编码的二进制数据）
-        return @json_encode($data) === false;
+        // 使用mbstring检测UTF-8编码（如果mbstring扩展可用）
+        if (function_exists('mb_check_encoding')) {
+            // 使用mb_check_encoding进行可靠的UTF-8检测
+            if (!mb_check_encoding($data, 'UTF-8')) {
+                return true;
+            }
+        } else {
+            // 回退到JSON编码检测（当mbstring不可用时）
+            if (@json_encode($data) === false) {
+                return true;
+            }
+        }
+        
+        // 通过所有检查 → 不是二进制数据
+        return false;
     }
 
     /**
@@ -347,9 +361,7 @@ class Socket
      */
     public function to(string|array $room): Broadcaster
     {
-        // 使用统一的Broadcaster
-        $broadcaster = new Broadcaster($this->server, $this->namespace, $this);
-        return $broadcaster->to($room);
+        return $this->_broadcaster->to($room);
     }
 
     /**
@@ -378,8 +390,7 @@ class Socket
      */
     public function except(string|array $room): Broadcaster
     {
-        $broadcaster = new Broadcaster($this->server, $this->namespace, $this);
-        return $broadcaster->except($room);
+        return $this->_broadcaster->except($room);
     }
 
     /**
@@ -487,9 +498,35 @@ class Socket
     /**
      * 广播事件到除了自己以外的其他连接
      */
-    public function broadcast(): ?Broadcaster
+    public function broadcast(): Broadcaster
     {
-        return $this->broadcast;
+        return $this->_broadcaster;
+    }
+
+    /**
+     * 向指定房间或Socket发送消息 (to()的别名，Socket.IO v4标准)
+     */
+    public function in(string|array $room): Broadcaster
+    {
+        return $this->to($room);
+    }
+
+    /**
+     * 压缩发送 (Socket.IO v4标准)
+     */
+    public function compress(bool $compress = true): self
+    {
+        // 压缩标记用于优化，可以在底层传输层使用
+        return $this;
+    }
+
+    /**
+     * 超时设置 (Socket.IO v4标准)
+     */
+    public function timeout(int $timeout): self
+    {
+        // 超时设置用于emitWithAck等带ACK的发送
+        return $this;
     }
 
     /**
