@@ -4,7 +4,6 @@ require_once __DIR__ . '/vendor/autoload.php';
 
 use Workerman\Worker;
 use PhpSocketIO\SocketIOServer;
-use Workerman\Connection\TcpConnection;
 
 // ========================================
 //  ★ 主服务器启动脚本
@@ -39,7 +38,7 @@ $io->on('connection', function ($socket) use ($io) {
 
     // 自定义事件处理器
     $socket->on('customEvent', function ($msg = null) use ($io) {
-        // 向所有客户端群发消息
+        //   
         $io->of('/chat')->emit('customEvent', $msg);
     });
     
@@ -61,7 +60,6 @@ $io->on('connection', function ($socket) use ($io) {
 
     // 二进制数据处理
     $socket->on('buffer', function ($msg) use ($socket) {
-        var_dump($msg);
         $socket->emitBinary('binaryResponse', $msg, ['status' => 'ok']);
     });
     
@@ -110,7 +108,7 @@ $io->on('connection', function ($socket) use ($io) {
     // 请求二进制数据
     $socket->on('reqBinary', function ($data) use ($socket) {
         $binaryData = "Hello binary world!";
-        $socket->emitBinary('binaryResponse', '123');
+        $socket->emit('binaryResponse', '123');
         return ['status' => 'ok'];
     });
 
@@ -120,12 +118,15 @@ $io->on('connection', function ($socket) use ($io) {
     });
 
     // 多ACK测试
-    for ($i = 1; $i <= 3; $i++) {
-        $eventName = "ack{$i}";
-        $socket->on($eventName, function ($data) use ($socket, $i) {
-            $socket->emit("ack{$i}", "Response for ack{$i}");
-        });
-    }
+    $socket->on('ack1', function ($data) use ($socket) {
+        $socket->emit('ack1', 'Response for ack1');
+    });
+    $socket->on('ack2', function ($data) use ($socket) {
+        $socket->emit('ack2', 'Response for ack2');
+    });
+    $socket->on('ack3', function ($data) use ($socket) {
+        $socket->emit('ack3', 'Response for ack3');
+    });
 
     // 断开连接事件处理器
     $socket->on('disconnect', function () use ($socket) {

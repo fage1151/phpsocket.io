@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace PhpSocketIO;
 
 /**
@@ -9,13 +11,11 @@ class PollingHandler
 {
     private ServerManager $serverManager;
     private EngineIOHandler $engineIoHandler;
-    private MiddlewareHandler $middlewareHandler;
 
-    public function __construct(ServerManager $serverManager, EngineIOHandler $engineIoHandler, MiddlewareHandler $middlewareHandler)
+    public function __construct(ServerManager $serverManager, EngineIOHandler $engineIoHandler)
     {
         $this->serverManager = $serverManager;
         $this->engineIoHandler = $engineIoHandler;
-        $this->middlewareHandler = $middlewareHandler;
     }
 
     /**
@@ -61,8 +61,6 @@ class PollingHandler
         $this->sendHttpResponse($connection, 200, [
             'Content-Type' => 'text/plain; charset=UTF-8',
         ], $body);
-
-        echo "[connect] polling sid={$session->sid}\n";
     }
 
     /**
@@ -104,7 +102,7 @@ class PollingHandler
                         return;
                     }
                 }
-                // 超时，发送空消息
+                // 超时，发送单个noop消息
                 $this->sendHttpResponse($connection, 200, [], '6');
             }, [], false);
             
@@ -118,12 +116,6 @@ class PollingHandler
             foreach ($batches as $batch) {
                 $this->sendHttpResponse($connection, 200, [], implode("\x1e", $batch));
             }
-        }
-        
-        // 记录处理时间
-        $processingTime = microtime(true) - $startTime;
-        if ($processingTime > 1) {
-            echo "[performance] Polling GET request took {$processingTime}s for sid={$sid}\n";
         }
     }
 
@@ -153,12 +145,6 @@ class PollingHandler
             $this->sendHttpResponse($connection, 200, [], 'ok');
         } catch (\Exception $e) {
             $this->sendErrorResponse($connection, $e->getMessage());
-        }
-        
-        // 记录处理时间
-        $processingTime = microtime(true) - $startTime;
-        if ($processingTime > 1) {
-            echo "[performance] Polling POST request took {$processingTime}s for sid={$sid}\n";
         }
     }
 
@@ -194,10 +180,6 @@ class PollingHandler
             if ($decodedPacket) {
                 $this->engineIoHandler->handlePacket($packet, $decodedPacket, null, $session);
             }
-        }
-        
-        if ($packetCount > 10) {
-            echo "[performance] Processed {$packetCount} packets for sid={$session->sid}\n";
         }
     }
 
@@ -257,7 +239,6 @@ class PollingHandler
      */
     private function sendErrorResponse(\Workerman\Connection\TcpConnection $connection, string $message = 'Error', int $code = 400): void
     {
-        echo "[error] {$message}\n";
         $this->sendHttpResponse($connection, $code, [], $message);
     }
     

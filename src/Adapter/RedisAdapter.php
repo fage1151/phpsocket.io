@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace PhpSocketIO\Adapter;
 
 /**
@@ -37,6 +39,9 @@ class RedisAdapter implements AdapterInterface
     
     /** @var bool 是否正在重连 */
     private $isReconnecting = false;
+    
+    /** @var object 用于订阅的Redis客户端实例 */
+    private $subscriber;
     
     /**
      * 构造函数
@@ -87,7 +92,6 @@ class RedisAdapter implements AdapterInterface
         $this->subscribeToChannels();
         
         $this->initialized = true;
-        echo "[adapter] Redis adapter initialized with prefix: {$this->prefix}\n";
     }
     
     /**
@@ -117,17 +121,14 @@ class RedisAdapter implements AdapterInterface
                 // 选择数据库
                 $this->redis->select($this->config['db']);
                 
-                echo "[adapter] Redis connected to {$this->config['host']}:{$this->config['port']}\n";
                 $this->isReconnecting = false;
                 return;
             } catch (\Exception $e) {
                 $attempt++;
                 if ($attempt > $maxAttempts) {
-                    echo "[adapter] Redis connection failed after {$maxAttempts} attempts: " . $e->getMessage() . "\n";
                     throw new \RuntimeException("Failed to connect to Redis", 0, $e);
                 }
                 
-                echo "[adapter] Redis connection attempt {$attempt}/{$maxAttempts} failed: " . $e->getMessage() . "\n";
                 usleep($this->reconnectInterval * 1000); // 转换为微秒
             }
         }
@@ -146,10 +147,8 @@ class RedisAdapter implements AdapterInterface
         
         try {
             $this->connectRedis();
-            echo "[adapter] Redis reconnected successfully\n";
             return true;
         } catch (\Exception $e) {
-            echo "[adapter] Redis reconnection failed: " . $e->getMessage() . "\n";
             $this->isReconnecting = false;
             return false;
         }
@@ -164,13 +163,10 @@ class RedisAdapter implements AdapterInterface
             // 直接执行命令，workerman/redis会异步执行并返回结果
             return $callback($this->redis);
         } catch (\Exception $e) {
-            echo "[adapter] Redis command failed: " . $e->getMessage() . "\n";
-            
             if ($retry && $this->tryReconnect()) {
                 try {
                     return $callback($this->redis);
                 } catch (\Exception $e2) {
-                    echo "[adapter] Redis command failed after reconnection: " . $e2->getMessage() . "\n";
                     throw $e2;
                 }
             }
@@ -204,8 +200,6 @@ class RedisAdapter implements AdapterInterface
         
         // 同时发送到本地所有会话
         $this->sendToLocalAll($packet);
-        
-        echo "[adapter] broadcasting packet to cluster\n";
     }
     
     /**
@@ -235,8 +229,6 @@ class RedisAdapter implements AdapterInterface
         
         // 同时发送到本地房间成员
         $this->sendToLocalRoom($room, $packet);
-        
-        echo "[adapter] publishing packet to room '{$room}'\n";
     }
     
     /**
@@ -525,8 +517,6 @@ class RedisAdapter implements AdapterInterface
                 $adapter->handleRedisMessage($channel, $message, $processId);
             });
         }
-        
-        echo "[adapter] Redis subscriber started, subscribed to channels: " . implode(', ', $channels) . "\n";
     }
     
     /**
@@ -540,7 +530,6 @@ class RedisAdapter implements AdapterInterface
         try {
             $data = json_decode($message, true);
             if (!$data) {
-                echo "[adapter] Invalid message format: {$message}\n";
                 return;
             }
             
@@ -564,11 +553,9 @@ class RedisAdapter implements AdapterInterface
                 case $prefix . 'member':
                     $this->handleMemberMessage($data);
                     break;
-                default:
-                    echo "[adapter] Unknown channel: {$channel}\n";
             }
         } catch (\Exception $e) {
-            echo "[adapter] Error handling Redis message: " . $e->getMessage() . "\n";
+            // 静默处理错误
         }
     }
     
@@ -614,7 +601,4 @@ class RedisAdapter implements AdapterInterface
         // 成员变动消息由发送方处理，接收方无需处理
         // 因为每个进程都维护自己的本地房间和会话信息
     }
-    
-    /** @var object 用于订阅的Redis客户端实例 */
-    private $subscriber;
 }

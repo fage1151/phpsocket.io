@@ -6,20 +6,22 @@
 
 - **多传输协议支持**: 支持 WebSocket 和 HTTP Long-Polling
 - **二进制数据支持**: 支持二进制事件传输
-- **集群支持**: 通过 Redis 实现多进程集群通信
+- **集群支持**: 通过 Channel 或 Redis 实现多进程集群通信
 - **房间管理**: 支持房间（Room）管理功能
 - **命名空间**: 支持多个命名空间
 - **事件确认**: 支持 ACK 确认机制
 - **中间件**: 支持连接和事件中间件
 - **心跳检测**: 自动心跳保活机制
+- **PSR-3 日志**: 支持 PSR-3 标准日志接口
 
 ## 系统要求
 
-- PHP > 8.0
+- PHP >= 8.1
 - workerman/workerman >= 4.0
+- psr/log >= 3.0
 - 可选依赖：
-  - workerman/channel（使用ClusterAdapter时需要）
-  - workerman/redis（使用RedisAdapter时需要）
+  - workerman/channel（使用 ClusterAdapter 时需要）
+  - workerman/redis（使用 RedisAdapter 时需要）
 
 ## 安装
 
@@ -38,7 +40,7 @@ composer install
 
 ### 安装可选依赖
 
-#### 使用ClusterAdapter时：
+#### 使用 ClusterAdapter 时：
 
 ClusterAdapter 基于 Workerman Channel，默认不包含，需要安装：
 
@@ -46,7 +48,7 @@ ClusterAdapter 基于 Workerman Channel，默认不包含，需要安装：
 composer require workerman/channel
 ```
 
-#### 使用RedisAdapter时：
+#### 使用 RedisAdapter 时：
 
 ```bash
 composer require workerman/redis
@@ -55,57 +57,66 @@ composer require workerman/redis
 ## 项目结构
 
 ```
-├── src/                # 核心源码目录
-│   ├── Adapter/                # 适配器目录
-│   │   ├── AdapterInterface.php    # 适配器接口
-│   │   └── ClusterAdapter.php      # 集群适配器
-│   ├── ClientSocket.php        # 客户端Socket类
-│   ├── EngineIOHandler.php     # Engine.IO协议处理器
-│   ├── EventHandler.php        # 事件处理器
-│   ├── HttpRequestHandler.php  # HTTP请求处理器
-│   ├── MiddlewareHandler.php   # 中间件处理器
-│   ├── PacketParser.php        # 数据包解析器
-│   ├── PollingHandler.php      # 轮询处理器
-│   ├── RoomManager.php         # 房间管理器
-│   ├── ServerManager.php       # 服务器管理器
-│   ├── Session.php             # 会话管理
-│   ├── Socket.php              # Socket类
-│   ├── SocketIOServer.php      # Socket.IO服务器主类
-│   └── SocketIOV4Parser.php    # Socket.IO v4协议解析器
-├── server.php          # 服务器启动脚本
-├── index.html          # 客户端示例
-├── composer.json       # Composer配置文件
-├── composer.lock       # Composer依赖锁定文件
-├── README.md           # 项目说明文档
-├── README.en.md        # 英文说明文档
-├── USAGE.md            # 使用文档
-└── LICENSE             # 许可证文件
+├── src/                          # 核心源码目录
+│   ├── Adapter/                  # 适配器目录
+│   │   ├── AdapterInterface.php  # 适配器接口
+│   │   ├── ClusterAdapter.php    # 基于Channel的集群适配器
+│   │   └── RedisAdapter.php      # 基于Redis的集群适配器
+│   ├── Broadcaster.php           # 统一广播器
+│   ├── EngineIOHandler.php       # Engine.IO协议处理器
+│   ├── EventHandler.php          # 事件处理器
+│   ├── HttpRequestHandler.php    # HTTP请求处理器
+│   ├── Logger.php                # PSR-3 兼容日志器
+│   ├── MiddlewareHandler.php     # 中间件处理器
+│   ├── PacketParser.php          # 数据包解析器
+│   ├── PollingHandler.php        # 轮询处理器
+│   ├── RoomManager.php           # 房间管理器
+│   ├── ServerManager.php         # 服务器管理器
+│   ├── Session.php               # 会话管理
+│   ├── Socket.php                # Socket类
+│   └── SocketIOServer.php        # Socket.IO服务器主类
+├── examples/                     # 示例目录
+│   └── simple-chat/              # 简单聊天示例
+├── tests/                        # 测试目录
+├── server.php                    # 服务器启动脚本
+├── index.html                    # 客户端示例
+├── composer.json                 # Composer配置文件
+├── CHANGELOG.md                  # 更新日志
+├── CONTRIBUTING.md               # 贡献指南
+├── README.md                     # 项目说明文档
+├── README.en.md                  # 英文说明文档
+├── USAGE.md                      # 使用文档
+└── LICENSE                       # 许可证文件
 ```
 
 ## 核心文件说明
 
-- **src/SocketIOServer.php**: Socket.IO服务器主类，负责处理连接和事件分发
-- **src/EventHandler.php**: 事件处理器，负责处理各种Socket.IO事件
-- **src/HttpRequestHandler.php**: HTTP请求处理器，处理HTTP轮询和WebSocket握手
-- **src/EngineIOHandler.php**: Engine.IO协议处理器，处理底层传输协议
+- **src/SocketIOServer.php**: Socket.IO 服务器主类，负责处理连接和事件分发
+- **src/EventHandler.php**: 事件处理器，负责处理各种 Socket.IO 事件
+- **src/HttpRequestHandler.php**: HTTP 请求处理器，处理 HTTP 轮询和 WebSocket 握手
+- **src/EngineIOHandler.php**: Engine.IO 协议处理器，处理底层传输协议
 - **src/Session.php**: 会话管理，管理客户端会话状态
-- **src/Socket.php**: Socket类，封装客户端连接接口
+- **src/Socket.php**: Socket 类，封装客户端连接接口
 - **src/RoomManager.php**: 房间管理器，处理房间相关操作
-- **src/PacketParser.php**: 数据包解析器，解析Socket.IO数据包
+- **src/PacketParser.php**: 数据包解析器，解析 Socket.IO 数据包
+- **src/Broadcaster.php**: 统一广播器，负责消息广播
+- **src/Logger.php**: PSR-3 兼容日志器
 
 ## 快速开始
 
 ### 基本用法
 
 ```php
+use Workerman\Worker;
 use PhpSocketIO\SocketIOServer;
 
-// 创建Socket.IO服务器实例
+// 创建 Socket.IO 服务器实例
 $io = new SocketIOServer('0.0.0.0:8088', [
     'pingInterval' => 25000,  // 心跳间隔（毫秒）
     'pingTimeout'  => 20000,  // 心跳超时（毫秒）
     'maxPayload'   => 10485760, // 最大负载（字节）
-    'workerCount'  => 1,       // worker数量，默认为1
+    'workerCount'  => 1,       // worker 数量，默认为 1
+    'log_level'    => \Psr\Log\LogLevel::INFO, // 日志级别
 ]);
 
 // 连接事件处理
@@ -128,26 +139,49 @@ $io->on('connection', function ($socket) use ($io) {
 Worker::runAll();
 ```
 
-### 多worker配置示例
+### 使用日志
 
-当需要使用多个worker进程时，必须通过setAdapter方法设置adapter：
+```php
+// 1. 使用内置日志器（默认）
+$io = new SocketIOServer('0.0.0.0:8088', [
+    'log_level' => \Psr\Log\LogLevel::DEBUG
+]);
 
-##### 使用ClusterAdapter（基于Workerman Channel）
+// 2. 设置自定义日志处理器
+$io->getLogger()->setHandler(function ($level, $message, $context) {
+    // 这里可以写入文件、数据库、或者其他日志服务
+    file_put_contents('/path/to/logs/socketio.log',
+        "[{$level}] {$message}\n", FILE_APPEND
+    );
+});
 
-> 注意：使用ClusterAdapter需要先安装workerman/channel：
+// 3. 使用第三方 PSR-3 日志库，如 Monolog
+$logger = new \Monolog\Logger('socketio');
+$logger->pushHandler(new \Monolog\Handler\StreamHandler('/path/to/logs/socketio.log'));
+$io->setLogger($logger);
+```
+
+### 多 worker 配置示例
+
+当需要使用多个 worker 进程时，必须通过 setAdapter 方法设置 adapter：
+
+#### 使用 ClusterAdapter（基于 Workerman Channel）
+
+> 注意：使用 ClusterAdapter 需要先安装 workerman/channel：
 > ```bash
 > composer require workerman/channel
 > ```
 
 ```php
+use Workerman\Worker;
 use PhpSocketIO\SocketIOServer;
 use PhpSocketIO\Adapter\ClusterAdapter;
 
-// 创建多worker服务器实例（4个worker）
+// 创建多 worker 服务器实例（4个 worker）
 $io = new SocketIOServer('0.0.0.0:8088', [
     'pingInterval' => 25000,
     'pingTimeout'  => 20000,
-    'workerCount'  => 4,  // 设置4个worker
+    'workerCount'  => 4,  // 设置 4 个 worker
 ]);
 
 // 创建并设置集群适配器
@@ -164,30 +198,31 @@ $io->setAdapter($adapter);
 Worker::runAll();
 ```
 
-##### 使用RedisAdapter（基于Redis）
+#### 使用 RedisAdapter（基于 Redis）
 
-> 注意：使用RedisAdapter需要先安装workerman/redis：
+> 注意：使用 RedisAdapter 需要先安装 workerman/redis：
 > ```bash
 > composer require workerman/redis
 > ```
 
 ```php
+use Workerman\Worker;
 use PhpSocketIO\SocketIOServer;
 use PhpSocketIO\Adapter\RedisAdapter;
 
-// 创建多worker服务器实例（4个worker）
+// 创建多 worker 服务器实例（4个 worker）
 $io = new SocketIOServer('0.0.0.0:8088', [
     'pingInterval' => 25000,
     'pingTimeout'  => 20000,
-    'workerCount'  => 4,  // 设置4个worker
+    'workerCount'  => 4,  // 设置 4 个 worker
 ]);
 
-// 创建并设置Redis适配器
+// 创建并设置 Redis 适配器
 $adapter = new RedisAdapter([
     'host' => '127.0.0.1',
     'port' => 6379,
-    'auth' => null,  // Redis认证密码，无密码时为null
-    'db' => 0,       // Redis数据库编号
+    'auth' => null,  // Redis 认证密码，无密码时为 null
+    'db' => 0,       // Redis 数据库编号
     'prefix' => 'socketio_',
     'heartbeat' => 25
 ]);
@@ -198,6 +233,94 @@ $io->setAdapter($adapter);
 Worker::runAll();
 ```
 
+## 房间操作
+
+```php
+$io->on('connection', function ($socket) {
+    // 加入房间
+    $socket->join('room1');
+    
+    // 离开房间
+    $socket->leave('room1');
+    
+    // 只向指定房间发送
+    $io->to('room1')->emit('some event', 'message');
+    
+    // 向多个房间发送
+    $io->to('room1')->to('room2')->emit('some event', 'message');
+    
+    // 广播（排除当前 socket）
+    $socket->broadcast->emit('some event', 'message');
+    
+    // 在指定房间内广播
+    $socket->to('room1')->emit('some event', 'message');
+});
+```
+
+## 事件确认（ACK）
+
+```php
+$io->on('connection', function ($socket) {
+    $socket->on('reqAck', function ($data, $ack) {
+        // 处理数据
+        $result = ['status' => 'ok', 'data' => $data];
+        
+        // 调用回调发送确认
+        $ack($result);
+    });
+});
+```
+
+## 配置选项
+
+| 选项 | 类型 | 默认值 | 描述 |
+| --- | --- | --- | --- |
+| `pingInterval` | int | 25000 | 心跳间隔（毫秒） |
+| `pingTimeout` | int | 20000 | 心跳超时（毫秒） |
+| `maxPayload` | int | 10485760 | 最大负载大小（字节） |
+| `workerCount` | int | 1 | Worker 进程数量 |
+| `log_level` | string | `LogLevel::INFO` | 日志级别（PSR-3） |
+| `ssl` | array | [] | SSL 配置（用于 HTTPS/WSS） |
+
+## Composer 脚本
+
+```bash
+# 启动服务器
+composer start
+
+# 以守护进程方式启动
+composer start-daemon
+
+# 停止服务器
+composer stop
+
+# 重启服务器
+composer restart
+
+# 查看服务器状态
+composer status
+
+# 运行测试
+composer test
+
+# 检查代码规范
+composer cs-check
+
+# 修复代码规范
+composer cs-fix
+
+# 静态分析
+composer analyse
+```
+
 ## 更多信息
 
 详细使用说明请参考 [USAGE.md](USAGE.md) 文件。
+
+## 贡献指南
+
+请参考 [CONTRIBUTING.md](CONTRIBUTING.md) 文件。
+
+## 许可证
+
+本项目采用 MIT 许可证，详见 [LICENSE](LICENSE) 文件。

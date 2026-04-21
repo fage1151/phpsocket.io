@@ -1,19 +1,29 @@
-# Build and Release Folders
-bin-debug/
-bin-release/
-[Oo]bj/
-[Bb]in/
-vendor/
-composer.lock
-# Other files and folders
-.settings/
+# Composer
+/vendor/
+/composer.lock
 
-# Executables
-*.swf
-*.air
-*.ipa
-*.apk
+# IDE
+/.idea/
+/.vscode/
+*.swp
+*.swo
+*~
 
-# Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
-# should NOT be excluded as they contain compiler settings and other important
-# information for Eclipse / Flash Builder.
+# Build
+*.phar
+
+# Logs
+*.log
+/server.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+/.phpunit.result.cache
+/coverage/
+
+# Temporary files
+/tmp/
+/cache/

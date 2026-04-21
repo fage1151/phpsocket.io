@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace PhpSocketIO;
 
 use Workerman\Connection\TcpConnection;
@@ -11,29 +13,30 @@ use Workerman\Connection\TcpConnection;
  */
 class Socket
 {
-    public $sid;        // Session ID
-    public $id;         // 兼容性ID
-    public $namespace;  // 命名空间
-    public $server;     // SocketIO服务器实例
-    public $connection; // 连接对象
-    public $session;    // 会话对象
-    public $rooms = []; // 已加入的房间列表
-    public $auth;       // 认证信息
-    public $handshake;  // 握手信息
-    public $headers;    // HTTP头信息（如果有）
-    public $data = [];  // 任意数据对象 (v4.0.0+)
+    public ?string $sid;        // Session ID
+    public string $namespace;   // 命名空间
+    public ?SocketIOServer $server; // SocketIO服务器实例
+    public ?TcpConnection $connection; // 连接对象
+    public ?Session $session;   // 会话对象
+    public mixed $auth;         // 认证信息
+    public mixed $handshake;    // 握手信息
+    public mixed $headers;      // HTTP头信息（如果有）
+    public array $data = [];    // 任意数据对象 (v4.0.0+)
 
-    public $broadcast = null;
+    public ?Broadcaster $broadcast = null;
 
     /**
-     * 超时时间（毫秒）
+     * 魔术方法，保持兼容性
      */
-    private $timeout = null;
+    public function __get(string $name): mixed
+    {
+        if ($name === 'id') {
+            return $this->sid;
+        }
+        return null;
+    }
 
-    /**
-     * 排除的房间列表
-     */
-    private $exceptRooms = [];
+
 
     /**
      * 构造函数
@@ -41,7 +44,6 @@ class Socket
     public function __construct(?string $sid = null, string $namespace = '/', ?SocketIOServer $server = null, ?TcpConnection $connection = null)
     {
         $this->sid = $sid;
-        $this->id = $sid; // 兼容性别名
         $this->namespace = $namespace;
         $this->server = $server;
         $this->connection = $connection;
@@ -53,8 +55,8 @@ class Socket
             $this->data = &$this->session->data; // 引用，保持同步
         }
         
-        // 初始化broadcast属性
-        $this->broadcast = new SocketBroadcaster($server, $this);
+        // 初始化broadcast属性，使用统一的Broadcaster
+        $this->broadcast = new Broadcaster($server, $namespace, $this);
     }
 
     /**
@@ -67,7 +69,17 @@ class Socket
         }
         
         // 验证事件名称格式，只允许字母、数字、下划线和点
-        if (!preg_match('/^[a-zA-Z0-9_\.]+$/', $event)) {
+        $valid = true;
+        $len = strlen($event);
+        for ($i = 0; $i < $len; $i++) {
+            $char = $event[$i];
+            if (!ctype_alnum($char) && $char !== '_' && $char !== '.') {
+                $valid = false;
+                break;
+            }
+        }
+        
+        if (!$valid) {
             throw new \InvalidArgumentException("事件名称格式无效");
         }
         
@@ -107,13 +119,12 @@ class Socket
         }
         // 收集二进制附件并替换为占位符
         [$binaryAttachments, $processedArgs] = $this->processBinaryData($args);
-        // 构建二进制事件包前缀（根据附件数量）
+        // 构建二进制事件包（Socket.IO v4标准格式）
         $binaryCount = count($binaryAttachments);
-        $prefix = '45' . $binaryCount . '-';
-        // 构建并发送二进制事件包
+        $namespacePart = $this->namespace !== '/' ? $this->namespace . ',' : '';
         $eventData = array_merge([$event], $processedArgs);
         $socketIOPacket = json_encode($eventData);
-        $packetData = $this->buildPacket($prefix, $socketIOPacket);
+        $packetData = '45' . $binaryCount . '-' . $namespacePart . $socketIOPacket;
         
         if ($this->session) {
             // 发送文本包（包含占位符）
@@ -195,10 +206,11 @@ class Socket
      */
     private function emitAckEvent(string $event, int $ackId, mixed ...$args): self
     {
-        // 构建事件数据（包含ACK ID）
-        $eventData = array_merge([$event], $args, [$ackId]);
+        $namespacePart = $this->namespace !== '/' ? $this->namespace . ',' : '';
+        $eventData = array_merge([$event], $args);
         $socketIOPacket = json_encode($eventData);
-        $packetData = $this->buildPacket('42', $socketIOPacket);
+        // Socket.IO v4 标准格式：42[namespace,][ackId][event, args]
+        $packetData = '42' . $namespacePart . $ackId . $socketIOPacket;
         
         if ($this->session) {
             // 发送带ACK的事件包
@@ -217,38 +229,44 @@ class Socket
             return false;
         }
         
-        // 快速检查：如果包含 null 字节，视为二进制
-        if (str_contains($data, "\x00")) {
+        // 快速检查1：包含 null 字节 → 二进制
+        if (strpos($data, "\x00") !== false) {
             return true;
         }
+        
+        // 快速检查2：非可打印字符 → 二进制
         if (!ctype_print($data)) {
             return true;
         }
-        // 检查控制字符比例
-        $controlCharCount = 0;
+        
         $length = strlen($data);
         
-        for ($i = 0; $i < $length; $i++) {
+        // 快速检查3：较短的数据（<100字节）假设不是二进制
+        if ($length < 100) {
+            // 尝试快速编码检查
+            return @json_encode($data) === false;
+        }
+        
+        // 对于较长数据，只检查前 100 个字符
+        $controlCharCount = 0;
+        $checkLength = min($length, 100);
+        
+        for ($i = 0; $i < $checkLength; $i++) {
             $char = ord($data[$i]);
-            // 控制字符（除了制表符、换行、回车）
-            if ($char < 32 && !in_array($char, [9, 10, 13])) {
+            // 快速判断控制字符
+            if ($char < 32 && $char !== 9 && $char !== 10 && $char !== 13) {
                 $controlCharCount++;
             }
         }
         
-        // 如果控制字符比例超过 10%，视为二进制
-        if ($controlCharCount > $length * 0.1) {
+        // 快速阈值判断（不做乘法）
+        if ($controlCharCount * 10 > $checkLength) {
             return true;
         }
         
-        // 检查是否为有效的 UTF-8 文本
+        // 最后检查 UTF-8 编码
         return @json_encode($data) === false;
     }
-
-    /**
-     * Socket实例级别的事件处理器缓存
-     */
-    private $eventHandlers = [];
 
     /**
      * 注册事件监听器 (Socket.IO v4标准接口)
@@ -259,10 +277,7 @@ class Socket
             throw new \RuntimeException("Socket实例未关联到服务器");
         }
         
-        // 缓存到Socket实例级别的事件处理器
-        $this->eventHandlers[$event] = $callback;
-        
-        // 同时注册到服务器的事件处理器（兼容全局查找）
+        // 只注册到EventHandler，避免重复
         $this->server->on($event, $callback, $this->namespace);
         
         return $this;
@@ -271,9 +286,16 @@ class Socket
     /**
      * 获取Socket实例级别的事件处理器
      */
-    public function getEventHandler($event)
+    public function getEventHandler(string $event): mixed
     {
-        return $this->eventHandlers[$event] ?? null;
+        // 从EventHandler获取
+        if ($this->server) {
+            $eventHandler = $this->server->getEventHandler();
+            if (isset($eventHandler->namespaceHandlers[$this->namespace]['events'][$event])) {
+                return $eventHandler->namespaceHandlers[$this->namespace]['events'][$event];
+            }
+        }
+        return null;
     }
     
     /**
@@ -281,7 +303,12 @@ class Socket
      */
     public function hasEventHandler(string $event): bool
     {
-        return isset($this->eventHandlers[$event]);
+        // 从EventHandler检查
+        if ($this->server) {
+            $eventHandler = $this->server->getEventHandler();
+            return isset($eventHandler->namespaceHandlers[$this->namespace]['events'][$event]);
+        }
+        return false;
     }
     
     /**
@@ -289,7 +316,12 @@ class Socket
      */
     public function getAllEventHandlers(): array
     {
-        return $this->eventHandlers;
+        // 从EventHandler获取
+        if ($this->server) {
+            $eventHandler = $this->server->getEventHandler();
+            return $eventHandler->namespaceHandlers[$this->namespace]['events'] ?? [];
+        }
+        return [];
     }
     
     /**
@@ -297,7 +329,10 @@ class Socket
      */
     public function setEventHandlers(array $handlers): void
     {
-        $this->eventHandlers = $handlers;
+        // 不建议直接设置，通过on()方法注册
+        foreach ($handlers as $event => $callback) {
+            $this->on($event, $callback);
+        }
     }
 
     /**
@@ -309,13 +344,11 @@ class Socket
             throw new \InvalidArgumentException("房间名称不能为空");
         }
         
-        // 使用房间管理器加入房间
         if ($this->session && $this->server) {
             $this->server->getRoomManager()->join($room, $this->session);
-            $this->rooms[$room] = true;
         }
         
-        return $this; // 支持链式调用
+        return $this;
     }
 
     /**
@@ -325,7 +358,6 @@ class Socket
     {
         if ($this->session && $this->server) {
             $this->server->getRoomManager()->leave($room, $this->session);
-            unset($this->rooms[$room]);
         }
         
         return $this;
@@ -335,20 +367,18 @@ class Socket
      * 指定房间进行广播 (链式调用)
      * 例如: socket.to('room1').emit('message', 'Hello')
      */
-    public function to($room)
+    public function to(string|array $room): Broadcaster
     {
-        // 创建一个广播器实例，专门处理房间广播
-        $broadcaster = new SocketBroadcaster($this->server, $this);
+        // 使用统一的Broadcaster
+        $broadcaster = new Broadcaster($this->server, $this->namespace, $this);
         return $broadcaster->to($room);
     }
 
     /**
      * 断开连接
      */
-    public function disconnect($close = false)
+    public function disconnect(bool $close = false): self
     {
-        echo "[Socket] disconnect - sid={$this->sid}\n";
-        
         // 触发断开事件，带reason参数
         $reason = $close ? 'server namespace disconnect' : 'client namespace disconnect';
         if ($this->server) {
@@ -363,33 +393,22 @@ class Socket
         return $this;
     }
 
-    /**
-     * 设置超时时间 (v4.4.0+)
-     * 用于带ACK的事件发送
-     */
-    public function timeout($value)
-    {
-        $this->timeout = $value;
-        return $this;
-    }
+
 
     /**
      * 排除特定房间的广播修饰符 (v4.0.0+)
      */
-    public function except($rooms)
+    public function except(string|array $room): Broadcaster
     {
-        if (!is_array($rooms)) {
-            $rooms = [$rooms];
-        }
-        $this->exceptRooms = array_merge($this->exceptRooms, $rooms);
-        return $this;
+        $broadcaster = new Broadcaster($this->server, $this->namespace, $this);
+        return $broadcaster->except($room);
     }
 
     /**
      * 带ACK的发送 (Promise风格, v4.6.0+)
      * 注意：PHP不支持Promise，这里使用回调函数方式
      */
-    public function emitWithAck($event, ...$args)
+    public function emitWithAck(string $event, mixed ...$args): self
     {
         // 检查最后一个参数是否是回调函数
         $callback = null;
@@ -405,12 +424,6 @@ class Socket
             // 在Session中存储（用于内部引用）
             if ($this->session) {
                 $this->session->ackCallbacks[$ackId] = $callback;
-                
-                // 设置超时
-                if ($this->timeout !== null) {
-                    $timeoutMs = $this->timeout;
-                    $this->session->ackCallbacks[$ackId . '_timeout'] = time() + ($timeoutMs / 1000);
-                }
             }
             
             // 在EventHandler中存储（用于实际调用）
@@ -420,9 +433,7 @@ class Socket
             }
         }
         
-        // 重置超时和排除房间
-        $this->timeout = null;
-        $this->exceptRooms = [];
+
         
         // 构建带ACK的事件包
         return $this->emitAckEvent($event, $ackId, ...$args);
@@ -431,7 +442,7 @@ class Socket
     /**
      * 批量发送多个事件 (优化性能)
      */
-    public function emitMultiple(array $events)
+    public function emitMultiple(array $events): self
     {
         foreach ($events as $event) {
             if (is_array($event) && count($event) >= 1) {
@@ -446,7 +457,7 @@ class Socket
     /**
      * 发送压缩包 (性能优化)
      */
-    public function emitCompressed($event, ...$args)
+    public function emitCompressed(string $event, mixed ...$args): self
     {
         // 这里可以实现压缩逻辑
         return $this->emit($event, ...$args);
@@ -455,13 +466,18 @@ class Socket
     /**
      * 获取连接基本信息
      */
-    public function getInfo()
+    public function getInfo(): array
     {
+        $rooms = [];
+        if ($this->session && $this->server) {
+            $rooms = $this->server->getRoomManager()->getSessionRooms($this->sid);
+        }
+        
         return [
             'id' => $this->id,
             'sid' => $this->sid,
             'namespace' => $this->namespace,
-            'rooms' => array_keys($this->rooms),
+            'rooms' => $rooms,
             'connected_at' => $this->session ? $this->session->created_at : null,
             'ip' => $this->connection ? $this->connection->getRemoteIp() : null
         ];
@@ -470,7 +486,7 @@ class Socket
     /**
      * 检查是否连接到指定命名空间
      */
-    public function isConnected($namespace = null)
+    public function isConnected(?string $namespace = null): bool
     {
         if ($namespace === null) {
             return !empty($this->sid) && $this->session !== null;
@@ -482,30 +498,39 @@ class Socket
     /**
      * 检查是否在指定房间中
      */
-    public function inRoom($room)
+    public function inRoom(string $room): bool
     {
-        return isset($this->rooms[$room]);
+        if ($this->session && $this->server) {
+            return $this->server->getRoomManager()->isInRoom($this->sid, $room);
+        }
+        return false;
     }
 
     /**
      * 广播事件到除了自己以外的其他连接
      */
-    public function broadcast()
+    public function broadcast(): ?Broadcaster
     {
-        // 创建一个排除当前socket的广播器
-        $broadcaster = new SocketBroadcaster($this->server, $this);
-        return $broadcaster->broadcast();
+        return $this->broadcast;
     }
 
     /**
      * 序列化方法（用于存储或传输）
      */
-    public function serialize()
+    public function serialize(): array
     {
+        $rooms = [];
+        if ($this->session && $this->server) {
+            $roomNames = $this->server->getRoomManager()->getSessionRooms($this->sid);
+            foreach ($roomNames as $roomName) {
+                $rooms[$roomName] = true;
+            }
+        }
+        
         return [
             'sid' => $this->sid,
             'namespace' => $this->namespace,
-            'rooms' => $this->rooms,
+            'rooms' => $rooms,
             'auth' => $this->auth,
             'headers' => $this->headers
         ];
@@ -514,12 +539,20 @@ class Socket
     /**
      * 反序列化方法（用于恢复socket实例）
      */
-    public static function unserialize(array $data, $server = null)
+    public static function unserialize(array $data, ?SocketIOServer $server = null): self
     {
         $socket = new self($data['sid'], $data['namespace'], $server);
-        $socket->rooms = $data['rooms'] ?? [];
         $socket->auth = $data['auth'] ?? null;
         $socket->headers = $data['headers'] ?? null;
+        
+        // 恢复房间（如果有房间数据）
+        if (isset($data['rooms']) && is_array($data['rooms'])) {
+            if ($socket->session && $server) {
+                foreach (array_keys($data['rooms']) as $roomName) {
+                    $server->getRoomManager()->join($roomName, $socket->session);
+                }
+            }
+        }
         
         return $socket;
     }
@@ -527,7 +560,7 @@ class Socket
     /**
      * 获取传输器类型 (兼容server.php中的调用)
      */
-    public function getTransport()
+    public function getTransport(): string
     {
         // 如果有session对象，从其获取传输类型
         if ($this->session && isset($this->session->transport)) {
@@ -539,7 +572,7 @@ class Socket
     /**
      * 获取Socket ID (兼容server.php中的调用)
      */
-    public function getId()
+    public function getId(): ?string
     {
         return $this->id;
     }
@@ -547,7 +580,7 @@ class Socket
     /**
      * 魔术方法：支持链式调用
      */
-    public function __call($method, $args)
+    public function __call(string $method, array $args): mixed
     {
         // 转发到服务器实例（如果方法不存在）
         if ($this->server && method_exists($this->server, $method)) {
@@ -555,60 +588,5 @@ class Socket
         }
         
         throw new \BadMethodCallException("方法 {$method} 不存在");
-    }
-}
-
-/**
- * SocketBroadcaster - Socket广播辅助类
- * 用于socket->broadcast->emit()链式调用
- */
-class SocketBroadcaster
-{
-    private $server;
-    private $excludeSocket;
-    private $targetRoom = null;
-
-    /**
-     * 构造函数
-     */
-    public function __construct($server, $excludeSocket = null)
-    {
-        $this->server = $server;
-        $this->excludeSocket = $excludeSocket;
-    }
-
-    /**
-     * 指定要广播到的房间
-     */
-    public function to($room)
-    {
-        $this->targetRoom = $room;
-        return $this;
-    }
-
-    /**
-     * 广播事件到除当前socket外的所有客户端
-     */
-    public function emit($event, ...$args)
-    {
-        if (!$this->server) {
-            throw new \RuntimeException("服务器实例不存在");
-        }
-
-        echo "[SocketBroadcaster] 广播事件: {$event}";
-        if ($this->targetRoom) {
-            echo "，目标房间: {$this->targetRoom}\n";
-        } else {
-            echo "，排除当前socket\n";
-        }
-
-        // 如果有目标房间，发送到特定房间
-        if ($this->targetRoom) {
-            return $this->server->emitToRoom($this->targetRoom, $event, ...$args);
-        } else {
-            // 否则广播到所有连接，排除指定的socket
-            array_push($args, $this->excludeSocket);
-            return $this->server->broadcast($event, ...$args);
-        }
     }
 }

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace PhpSocketIO;
 
 use Exception;
@@ -44,27 +46,30 @@ class Session
      */
     public function __construct(string $sid)
     {
-        // 会话ID格式验证（24字符十六进制格式）
-        if (!preg_match('/^[a-f0-9]{24}$/', $sid)) {
+        // 快速会话ID格式验证（优先长度检查）
+        if (strlen($sid) !== 24 || !ctype_xdigit($sid)) {
             throw new \InvalidArgumentException("Invalid session ID format: {$sid}");
         }
         
         // 检查会话数量限制
-        if (count(self::$sessions) >= self::$maxSessions) {
+        $sessionCount = count(self::$sessions);
+        if ($sessionCount >= self::$maxSessions) {
             self::cleanupOldestSessions(100); // 清理最旧的100个会话
         }
         
         // 初始化会话属性
         $this->sid = $sid;
-        $this->lastPong = time();
-        $this->lastPing = 0; // 初始化为0，确保第一次心跳检查就发送ping
-        $this->createdAt = time();
+        $now = time();
+        $this->lastPong = $now;
+        $this->lastPing = 0;
+        $this->createdAt = $now;
         self::$sessions[$sid] = $this;
         
-        // 清理缓存
-        self::cleanupCache();
+        // 清理缓存（只在缓存过大时）
+        if (count(self::$cache) > self::$cacheSize) {
+            self::cleanupCache();
+        }
         
-        echo "[session] created sid={$sid} total=" . count(self::$sessions) . "\n";
     }
 
     /**
@@ -127,7 +132,6 @@ class Session
                 // 使用HttpRequestHandler中的标准WebSocket发送方法
                 return \PhpSocketIO\HttpRequestHandler::sendWsFrame($this->connection, $packet, false);
             } catch (Exception $e) {
-                echo "[session send] WebSocket发送异常: " . $e->getMessage() . "\n";
                 return false;
             }
         } else {
@@ -185,12 +189,12 @@ class Session
      */
     private static function cleanupOldestSessions(int $batchSize = 100): void
     {
-        $sessions = self::$sessions;
-        uasort($sessions, fn($a, $b) => $a->createdAt <=> $b->createdAt);
-        
         $cleaned = 0;
-        foreach ($sessions as $sid => $session) {
-            if ($session->isExpired()) {
+        $now = time();
+        
+        // 不排序，直接遍历查找过期会话
+        foreach (self::$sessions as $sid => $session) {
+            if (($now - $session->createdAt) > self::$sessionTtl) {
                 unset(self::$sessions[$sid]);
                 unset(self::$cache[$sid]);
                 $cleaned++;
@@ -198,9 +202,6 @@ class Session
             }
         }
         
-        if ($cleaned > 0) {
-            echo "[cleanup] removed {$cleaned} expired sessions\n";
-        }
     }
 
     /**
@@ -208,10 +209,16 @@ class Session
      */
     private static function cleanupCache(): void
     {
-        if (count(self::$cache) > self::$cacheSize) {
-            // 保留最近使用的会话
-            $sessions = array_slice(self::$cache, -self::$cacheSize, self::$cacheSize, true);
-            self::$cache = $sessions;
+        $cacheCount = count(self::$cache);
+        if ($cacheCount > self::$cacheSize) {
+            // 直接截断到指定大小，保留最新的会话
+            $itemsToRemove = $cacheCount - self::$cacheSize;
+            if ($itemsToRemove > 0) {
+                $keys = array_keys(self::$cache);
+                for ($i = 0; $i < $itemsToRemove; $i++) {
+                    unset(self::$cache[$keys[$i]]);
+                }
+            }
         }
     }
     
@@ -241,25 +248,12 @@ class Session
             
             try {
                 $session->send($engineIOPacket);
-                echo "[send] direct sid={$sid} packet={$encodedPacket}\n";
                 return true;
             } catch (Exception $e) {
-                echo "[error] session send failed: " . $e->getMessage() . "\n";
                 return false;
             }
         }
         
-        // 未找到本地会话时，检查是否集群模式
-        global $io;
-        if (isset($io) && $io->isClusterEnabled()) {
-            $adapter = $io->getAdapter();
-            if ($adapter && method_exists($adapter, 'send') && $adapter->send($sid, $packet)) {
-                echo "[cluster_send] forwarded sid={$sid}\n";
-                return true;
-            }
-        }
-        
-        echo "[warning] session not found: {$sid}\n";
         return false;
     }
 
@@ -286,7 +280,6 @@ class Session
     {
         self::$sessions = [];
         self::$cache = [];
-        echo "[cleanup] cleared all sessions\n";
     }
 
     /**
@@ -311,7 +304,6 @@ class Session
     public function save(): void
     {
         // 会话已经在构造函数中存储在 static::$sessions 中
-        echo "[session] saved sid={$this->sid}\n";
     }
     
     /**
@@ -319,23 +311,12 @@ class Session
      */
     public function close(): void
     {
-        echo "[session] closing sid={$this->sid}\n";
-        
         // 关闭 WebSocket 连接（如果存在）
         if ($this->connection) {
             try {
                 $this->connection->close();
             } catch (Exception $e) {
-                echo "[session] error closing connection: " . $e->getMessage() . "\n";
-            }
-        }
-        
-        // 离开所有房间
-        global $io;
-        if (isset($io) && method_exists($io, 'getRoomManager')) {
-            $roomManager = $io->getRoomManager();
-            if ($roomManager) {
-                $roomManager->removeSession($this->sid);
+                // 静默处理连接关闭异常
             }
         }
         

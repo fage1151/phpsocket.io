@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace PhpSocketIO;
 
 use Exception;
@@ -17,7 +19,7 @@ class EngineIOHandler
     private $roomManager = null;   // 房间管理器
     private $onSocketIOMessage = null; // Socket.IO消息处理回调
     private $onBinaryMessage = null; // 二进制消息处理回调
-    private $onEngineIOPacket = null; // Engine.IO数据包处理回调
+
 
     /**
      * 构造函数
@@ -60,13 +62,7 @@ class EngineIOHandler
         $this->onBinaryMessage = $callback;
     }
 
-    /**
-     * 设置Engine.IO数据包处理回调
-     */
-    public function setEngineIOPacketHandler($callback): void
-    {
-        $this->onEngineIOPacket = $callback;
-    }
+
 
     /**
      * 处理Engine.IO数据包
@@ -85,14 +81,12 @@ class EngineIOHandler
             case 'upgrade':
                 // 客户端发送"5"表示升级完成确认
                 $session->upgraded = true;
-                echo "[engineio] received upgrade confirmation from sid={$session->sid}\n";
                 
                 // 先发送队列里的所有消息
                 $messages = $session->flush();
                 foreach ($messages as $msg) {
                     $session->send($msg);
                 }
-                echo "[engineio] sent " . count($messages) . " queued messages after upgrade\n";
                 
                 // 协议要求：升级完成后发送一个 noop (6) 包
                 $connection->send('6');
@@ -111,7 +105,6 @@ class EngineIOHandler
     {
         if (isset($packetData['data']) && $packetData['data'] === 'probe') {
             // 处理WebSocket升级探测包
-            echo "[engineio] received websocket upgrade probe from sid={$session->sid}, responding with 3probe\n";
             $connection->send('3probe');
             $session->updateLastPong();
             return true;
@@ -140,8 +133,6 @@ class EngineIOHandler
     {
         $message = $packet['data'];
         
-        echo "[engineio] raw message for sid={$session->sid}: " . (is_string($message) ? $message : json_encode($message)) . "\n";
-        
         // 直接将消息传递给 Socket.IO 处理器
         if (isset($this->onSocketIOMessage)) {
             call_user_func($this->onSocketIOMessage, $message, $connection, $session);
@@ -156,9 +147,6 @@ class EngineIOHandler
     private function handleBinary($packet, $connection, Session $session)
     {
         $binaryData = base64_decode($packet['data']);
-        $dataSize = strlen($binaryData);
-        
-        echo "[engineio] binary data for sid={$session->sid}, size={$dataSize} bytes\n";
         
         // 调用外部处理函数
         if (isset($this->onBinaryMessage)) {
@@ -182,8 +170,6 @@ class EngineIOHandler
     
         $packet = PacketParser::buildEngineIOPacket('open', $handshake);
         $connection->send($packet);
-        
-        echo "[engineio] handshake sent for sid={$session->sid}\n";
     }
 
     /**
@@ -198,8 +184,6 @@ class EngineIOHandler
         
         $engineIOPacket = PacketParser::buildEngineIOPacket('message', $socketIOPacket);
         $session->send($engineIOPacket);
-        
-        echo "[engineio] socketio message sent to sid={$session->sid}\n";
     }
 
     /**
@@ -215,9 +199,6 @@ class EngineIOHandler
             $packet = 'b' . base64_encode($binaryData);
             $session->send($packet);
         }
-        
-        $dataSize = strlen($binaryData);
-        echo "[engineio] binary data sent to sid={$session->sid}, size={$dataSize} bytes\n";
     }
 
     /**
@@ -262,16 +243,15 @@ class EngineIOHandler
         
         if (!empty($messages)) {
             // 将多个消息合并为一个HTTP响应
-            $response = array_reduce($messages, function($carry, $msg) {
-                return $carry . strlen($msg) . ':' . $msg;
-            }, '');
+            $response = '';
+            foreach ($messages as $msg) {
+                $response .= strlen($msg) . ':' . $msg;
+            }
             
             $connection->send($response);
-            echo "[engineio] polling response sent to sid={$session->sid}, messages=" . count($messages) . "\n";
         } else {
             // 如果没有消息，发送空响应
             $connection->send('1:1'); // 单个noop消息
-            echo "[engineio] polling response (empty) sent to sid={$session->sid}\n";
         }
     }
 
@@ -306,27 +286,17 @@ class EngineIOHandler
         
         // 处理每个消息
         foreach ($messages as $msg) {
-            echo "[engineio] received POST message for sid={$session->sid}: {$msg}\n";
-            
             // 解析Engine.IO数据包
             $packet = PacketParser::parseEngineIOPacket($msg);
             if ($packet) {
-                if (isset($this->onEngineIOPacket)) {
-                    call_user_func($this->onEngineIOPacket, $msg, $packet, null, $session);
-                }
+                $this->handlePacket($msg, $packet, null, $session);
             }
         }
         
         return count($messages);
     }
 
-    /**
-     * 设置外部回调函数
-     */
-    public function setCallback($type, $callback)
-    {
-        $this->{$type} = $callback;
-    }
+
 
     /**
      * 获取心跳配置
@@ -376,12 +346,10 @@ class EngineIOHandler
         if ($session->connection) {
             // 关闭WebSocket连接
             $session->connection->close();
-            echo "[cleanup] closed connection for session: {$session->sid}\n";
         }
         
         // 从会话池中移除
         Session::remove($session->sid);
-        echo "[cleanup] removed session: {$session->sid}\n";
     }
     
     /**
@@ -393,16 +361,11 @@ class EngineIOHandler
         // Engine.IO协议处理：直接处理解析后的消息
         $packet = PacketParser::parseEngineIOPacket($data);
         if (!$packet) {
-            // 特殊处理：尝试检查是否是特殊的"451"错误代码等格式
-            if (strlen($data) > 0 && !empty(trim($data))) {
-                echo "[engineio] Failed to parse Engine.IO packet: raw=\"" . substr($data, 0, 100) . "\" (len=" . strlen($data) . ")\n";
-            }
             return;
         }
         
         // 获取会话对应的连接
         if (!$session->connection) {
-            echo "[engineio] No connection available for WebSocket session: {$session->sid}\n";
             return;
         }
         
@@ -410,7 +373,6 @@ class EngineIOHandler
         // 允许的包类型：ping(2), pong(3), upgrade(5), noop(6)
         $allowedTypesBeforeUpgrade = ['ping', 'pong', 'upgrade', 'noop'];
         if (!$session->upgraded && !in_array($packet['type'], $allowedTypesBeforeUpgrade)) {
-            echo "[engineio] Waiting for upgrade confirmation (sid={$session->sid}), ignoring packet: type={$packet['type']}\n";
             return;
         }
         
@@ -450,67 +412,5 @@ class EngineIOHandler
         return $this->pingTimeout;
     }
 
-    /**
-     * 处理二进制数据
-     */
-    public function processBinaryData(Session $session, $placeholderPacket, $binaryData, $placeholderNum)
-    {
-        // 存储二进制附件
-        $session->pendingBinaryAttachments[$placeholderNum] = $binaryData;
-        
-        // 处理完整的二进制包
-        $this->processBinaryPacket($session, $placeholderPacket);
-    }
-    
-    /**
-     * 处理所有二进制附件合并后一起处理
-     */
-    public function processAllBinaryAttachments(Session $session, $placeholderPacket, $binaryAttachments)
-    {
-        // 存储所有二进制附件
-        foreach ($binaryAttachments as $index => $binaryData) {
-            $session->pendingBinaryAttachments[$index] = $binaryData;
-        }
-        
-        // 处理完整的二进制包
-        $this->processBinaryPacket($session, $placeholderPacket);
-    }
-    
-    /**
-     * 处理完整的二进制包
-     */
-    private function processBinaryPacket(Session $session, $placeholderPacket)
-    {
-        // 解析占位符包
-        $engineIoPacket = PacketParser::parseEngineIOPacket($placeholderPacket);
-        if (!$engineIoPacket || $engineIoPacket['type'] !== 'message') {
-            return;
-        }
-        
-        // 解析Socket.IO包
-        $socketIoData = $engineIoPacket['data'];
-        $socketIoPacket = PacketParser::parseSocketIOPacket($socketIoData);
-        if (!$socketIoPacket) {
-            return;
-        }
-        
-        // 替换二进制占位符
-        if (!empty($session->pendingBinaryAttachments)) {
-            $socketIoPacket = PacketParser::replaceBinaryPlaceholders($socketIoPacket, $session->pendingBinaryAttachments);
-        }
-        
-        // 处理完整的包
-        $socket = [
-            'id' => $session->sid,
-            'session' => $session,
-            'namespace' => isset($socketIoPacket['namespace']) ? $socketIoPacket['namespace'] : '/'
-        ];
-        
-        if ($this->eventHandler) {
-            $this->eventHandler->handlePacket($socketIoPacket, $socket);
-        }
-        
-        // 清理已处理的二进制附件
-        $session->pendingBinaryAttachments = [];
-    }
+
 }

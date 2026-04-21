@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace PhpSocketIO;
 
 /**
@@ -55,20 +57,17 @@ class HttpRequestHandler
         // 从connection获取session
         if (!isset($connection->sid)) {
             // WebSocket需要SID
-            echo "[error] Failed to create session for direct WebSocket connection\n";
             $connection->close();
             return;
         }
 
         $session = Session::get($connection->sid);
         if (!$session) {
-            echo "[error] Session not found for sid: {$connection->sid}\n";
             return;
         }
         
         // 如果session中的connection为空或无效，更新为当前有效的connection
         if (!$session->connection || !method_exists($session->connection, 'send')) {
-            echo "[fix] 重新绑定有效connection到Session\n";
             $session->connection = $connection;
             $session->isWs = true;
             $session->transport = 'websocket';
@@ -76,7 +75,6 @@ class HttpRequestHandler
         
         // 检查数据内容
         if (empty($data)) {
-            echo "[websocket] 接收到空数据包，可能是二进制数据帧的一部分\n";
             return;
         }
         
@@ -84,12 +82,10 @@ class HttpRequestHandler
         $isBinary = $this->isBinaryFrame($data);
         if (!$isBinary) {
             // 普通文本数据处理
-            echo "[websocket] 处理文本数据包：" . substr($data, 0, 200) . "\n";
             $this->processWebSocketData($session, $data);
         } else {
             // 处理二进制数据，传递给Engine.IO handler
             $binaryData = is_string($data) ? $data : (string)$data;
-            echo "[websocket] 收到二进制数据, 大小: " . strlen($binaryData) . " 字节\n";
             
             // 构建二进制包并交给Engine.IO处理
             $packet = ['type' => 'binary', 'data' => base64_encode($binaryData)];
@@ -125,44 +121,10 @@ class HttpRequestHandler
         // 将解析后的消息传递给Engine.IO处理器
         if ($this->engineIoHandler) {
             $this->engineIoHandler->processWebSocketData($session, $data);
-        } else {
-            echo "[error] Engine.IO handler not available for WebSocket data processing\n";
         }
     }
     
-    /**
-     * 处理WebSocket直连连接（无SID）
-     */
-    private function handleDirectWebSocketConnection(\Workerman\Connection\TcpConnection $connection): ?string
-    {
-        try {
-            // 生成新的会话ID
-            $sid = Session::generateSid();
-            
-            // 创建新的会话
-            $session = new Session($sid);
-            $session->transport = 'websocket';
-            $session->isWs = true;
-            $session->connection = $connection;
-            
-            // 保存会话到全局缓存
-            $session->save();
-            
-            // 设置连接属性
-            $connection->sid = $sid;
-            $connection->isWs = true;
-            
-            // 发送Engine.IO握手响应
-            $this->engineIoHandler->sendHandshake($connection, $session);
-            
-            echo "[websocket] direct connection established, sid={$sid}\n";
-            return $sid;
-            
-        } catch (Exception $e) {
-            echo "[error] Failed to handle direct WebSocket connection: " . $e->getMessage() . "\n";
-            return null;
-        }
-    }
+
     
     /**
      * 检查是否为WebSocket直连握手请求
@@ -180,8 +142,6 @@ class HttpRequestHandler
     private function handleDirectWebSocketHandshake(\Workerman\Connection\TcpConnection $connection, $req): void
     {
         try {
-            echo "[websocket] handling direct WebSocket handshake without SID\n";
-            
             // 生成新的会话ID
             $sid = Session::generateSid();
             
@@ -200,10 +160,7 @@ class HttpRequestHandler
                 $self->engineIoHandler->sendHandshake($connection, $session);
             }, [], false);
             
-            echo "[websocket] direct WebSocket connection established, sid={$sid}\n";
-            
         } catch (Exception $e) {
-            echo "[error] Failed to handle direct WebSocket handshake: " . $e->getMessage() . "\n";
             $connection->close();
         }
     }
@@ -272,13 +229,11 @@ class HttpRequestHandler
     {
         $sid = $req->get('sid');
         if (!$sid) {
-            echo "[error] Missing session ID in WebSocket upgrade\n";
             return false;
         }
 
         $session = Session::get($sid);
         if (!$session) {
-            echo "[error] Session not found for upgrade: {$sid}\n";
             return false;
         }
 
@@ -297,8 +252,6 @@ class HttpRequestHandler
         foreach ($messages as $msg) {
             $session->send($msg);
         }
-        
-        echo "[upgrade] session upgraded to WebSocket: {$sid}, sent " . count($messages) . " queued messages\n";
 
         return true;
     }
@@ -345,7 +298,6 @@ class HttpRequestHandler
             }
             return true;
         } catch (\Exception $e) {
-            echo "[error] Failed to send WebSocket frame: " . $e->getMessage() . "\n";
             return false;
         }
     }
@@ -373,43 +325,11 @@ class HttpRequestHandler
             $session = Session::get($sid);
             
             if ($session) {
-        // 离开所有房间
-        if ($this->engineIoHandler && method_exists($this->engineIoHandler, 'getRoomManager')) {
-            $roomManager = $this->engineIoHandler->getRoomManager();
-            if ($roomManager) {
-                $roomManager->removeSession($sid);
-            }
-        }
-        
-        // 触发disconnect事件
-        $socket = ['nsp' => '/', 'id' => $sid];
-        if ($this->engineIoHandler && method_exists($this->engineIoHandler, 'getEventHandler')) {
-            $eventHandler = $this->engineIoHandler->getEventHandler();
-            if ($eventHandler) {
-                $eventHandler->dispatchEvent($session, 'disconnect', null, $socket);
-            }
-        }
-                
                 // 删除session
                 Session::remove($sid);
-                echo "[disconnect] Connection closed, sid: {$sid}\n";
             }
         }
     }
 
-    /**
-     * 将Workerman请求对象转换为数组格式
-     */
-    private function parseRequestToArray($req): array
-    {
-        return [
-            'method' => $req->method ?? 'GET',
-            'path' => $req->path ?? '/',
-            'query' => $req->get ?? [],
-            'headers' => $req->header ?? [],
-            'body' => $req->rawBody ?? '',
-            'connection' => $req->connection ?? null,
-            'server' => $req->server ?? []
-        ];
-    }
+
 }

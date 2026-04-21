@@ -1,8 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace PhpSocketIO;
 
 use PhpSocketIO\Adapter\AdapterInterface;
+use PhpSocketIO\Logger;
 
 /**
  * 服务器管理器 - 管理Socket.IO服务器配置和状态
@@ -49,8 +52,6 @@ class ServerManager
         // 初始化适配器
         $this->adapter->init();
         $this->clusterEnabled = true;
-        
-        echo "[cluster] adapter initialized successfully\n";
     }
 
     /**
@@ -67,14 +68,6 @@ class ServerManager
     public function isClusterEnabled(): bool
     {
         return $this->clusterEnabled && $this->adapter !== null;
-    }
-    
-    /**
-     * 检查是否启用集群模式（兼容方法）
-     */
-    public function hasCluster(): bool
-    {
-        return $this->isClusterEnabled();
     }
 
     /**
@@ -189,32 +182,12 @@ class ServerManager
         if ($this->adapter && $this->clusterEnabled) {
             try {
                 $this->adapter->close();
-                echo "[cluster] adapter closed successfully\n";
             } catch (\Exception $e) {
-                echo "[error] Failed to close adapter: " . $e->getMessage() . "\n";
             }
         }
         
         $this->isRunning = false;
-        echo "[server] Server shutdown completed\n";
     }
 
-    /**
-     * 重新加载配置
-     */
-    public function reloadConfig(array $newConfig): bool
-    {
-        try {
-            $oldConfig = $this->getConfig();
-            $this->setConfig($newConfig);
-            
-            echo "[server] Configuration reloaded\n";
-            echo "[server] Changes: " . json_encode(array_diff_assoc($newConfig, $oldConfig)) . "\n";
-            
-            return true;
-        } catch (\Exception $e) {
-            echo "[error] Failed to reload configuration: " . $e->getMessage() . "\n";
-            return false;
-        }
-    }
+
 }

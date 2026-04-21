@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace PhpSocketIO\Adapter;
 
 /**
@@ -76,7 +78,6 @@ class ClusterAdapter implements AdapterInterface
         $this->initChannelClient();
         
         $this->initialized = true;
-        echo "[adapter] Cluster adapter initialized with prefix: {$this->prefix}\n";
     }
     
     /**
@@ -105,10 +106,7 @@ class ClusterAdapter implements AdapterInterface
             // 连接到Channel服务器，实现连接池管理
             $connectionKey = $this->config['channel_ip'] . ':' . $this->config['channel_port'];
             $channelClientClass::connect($this->config['channel_ip'], $this->config['channel_port']);
-            
-            echo "[adapter] Channel client connected to {$connectionKey}\n";
         } catch (\Exception $e) {
-            echo "[adapter] Connection failed to {$this->config['channel_ip']}:{$this->config['channel_port']} - " . $e->getMessage() . "\n";
             throw new \RuntimeException("Failed to initialize channel client", 0, $e);
         }
         
@@ -176,7 +174,6 @@ class ClusterAdapter implements AdapterInterface
                 'time' => time()
             ], true);
         } catch (\Exception $e) {
-            echo "[adapter] heartbeat failed: " . $e->getMessage() . "\n";
             // 尝试重新连接
             $this->initChannelClient();
         }
@@ -196,7 +193,6 @@ class ClusterAdapter implements AdapterInterface
         
         // Socket.IO v4协议验证：确保房间消息包格式正确
         if (!$this->validateSocketIOV4Packet($packet)) {
-            echo "[adapter error] invalid Socket.IO v4 packet for room '{$room}', publish cancelled: " . json_encode($packet) . "\n";
             return;
         }
         
@@ -209,7 +205,6 @@ class ClusterAdapter implements AdapterInterface
         
         // 使用批处理机制发送房间消息
         $this->publishBatch($this->prefix . 'room', $data);
-        echo "[adapter] publishing packet to room '{$room}': " . json_encode($packet) . "\n";
     }
     
     /**
@@ -224,7 +219,6 @@ class ClusterAdapter implements AdapterInterface
         
         // Socket.IO v4协议验证：确保广播包格式正确
         if (!$this->validateSocketIOV4Packet($packet)) {
-            echo "[adapter error] invalid Socket.IO v4 packet, broadcast cancelled: " . json_encode($packet) . "\n";
             return;
         }
         
@@ -236,7 +230,6 @@ class ClusterAdapter implements AdapterInterface
         
         // 使用批处理机制发送广播消息
         $this->publishBatch($this->prefix . 'broadcast', $data);
-        echo "[adapter] broadcasting packet to cluster: " . json_encode($packet) . "\n";
     }
     
     /**
@@ -367,7 +360,6 @@ class ClusterAdapter implements AdapterInterface
         
         // Socket.IO v4协议验证：确保广播包格式正确
         if (!$this->validateSocketIOV4Packet($packet)) {
-            echo "[adapter warning] invalid Socket.IO v4 broadcast packet, dropping: " . json_encode($packet) . "\n";
             return;
         }
         
@@ -379,8 +371,6 @@ class ClusterAdapter implements AdapterInterface
                 $sessionClass::sendToSession($sid, $packet);
             }
         }
-        
-        echo "[adapter] received broadcast from process {$data['sender']}\n";
     }
     
     /**
@@ -399,7 +389,6 @@ class ClusterAdapter implements AdapterInterface
         
         // Socket.IO v4协议验证：确保房间消息包格式正确
         if (!$this->validateSocketIOV4Packet($packet)) {
-            echo "[adapter warning] invalid Socket.IO v4 room packet for room '{$room}', dropping: " . json_encode($packet) . "\n";
             return;
         }
         
@@ -413,8 +402,6 @@ class ClusterAdapter implements AdapterInterface
                 }
             }
         }
-        
-        echo "[adapter] received room message for '{$room}' from process {$data['sender']}\n";
     }
     
     /**
@@ -465,8 +452,6 @@ class ClusterAdapter implements AdapterInterface
                 }
                 break;
         }
-        
-        echo "[adapter] member change: {$action} sid={$sid} room={$room}\n";
     }
     
     /**
@@ -551,7 +536,6 @@ class ClusterAdapter implements AdapterInterface
         foreach ($retryConfigs as $config) {
             $result = $this->performSessionQuery($sid, $queryId, $config['timeout']);
             if ($result !== null) {
-                echo "[adapter] session {$sid} found after {$config['description']}: process {$result}\n";
                 return $result;
             }
         }
@@ -677,25 +661,13 @@ class ClusterAdapter implements AdapterInterface
         
         $session = $sessionClass::get($sid);
         if ($session) {
-            // 适配器协议兼容性修复：必须发送完整的Socket.IO数据包
-            // 错误方式：只发送data部分导致EventHandler接收不到事件类型信息
-            // 正确方式：发送完整的事件数据包，包含type、event、data等字段
-            
             if (isset($packet['type'])) {
-                // 调用Session::sendToSession方法处理完整的Socket.IO包
                 $sessionClass::sendToSession($sid, $packet);
-                echo "[adapter] sent full packet to local session sid={$sid}: " . json_encode($packet) . "\n";
             } else {
-                // 回退到只发送数据（兼容旧格式）
                 if (isset($packet['data'])) {
                     $session->send($packet['data']);
-                    echo "[adapter] sent data-only message to local session sid={$sid}\n";
-                } else {
-                    echo "[adapter] missing packet type and data, skipping send\n";
                 }
             }
-        } else {
-            echo "[adapter] session not found locally sid={$sid}\n";
         }
     }
     
@@ -709,7 +681,6 @@ class ClusterAdapter implements AdapterInterface
     {
         // Socket.IO v4协议验证：确保数据包格式正确
         if (!$this->validateSocketIOV4Packet($packet)) {
-            echo "[adapter warning] invalid Socket.IO v4 packet format, dropping: " . json_encode($packet) . "\n";
             return;
         }
         
@@ -723,7 +694,6 @@ class ClusterAdapter implements AdapterInterface
         
         // 使用批处理机制发送单发消息
         $this->publishBatch($this->prefix . 'send', $data);
-        echo "[adapter] forwarded message for sid={$sid} to process {$targetProcess}\n";
     }
     
     /**
@@ -759,25 +729,21 @@ class ClusterAdapter implements AdapterInterface
         
         // 连接包验证 (type = 0)
         if ($packet['type'] === 0) {
-            // 连接包可以包含初始数据，但不是必需的
             return true;
         }
         
         // 断开包验证 (type = 1)
         if ($packet['type'] === 1) {
-            // 断开包没有其他必需字段
             return true;
         }
         
         // 心跳包验证 (type = 6)
         if ($packet['type'] === 6) {
-            // 心跳包没有其他必需字段
             return true;
         }
         
         // CONNECT_ERROR包验证 (type = 4)
         if ($packet['type'] === 4) {
-            // CONNECT_ERROR包应该包含错误数据
             if (!isset($packet['data']) || !is_array($packet['data'])) {
                 return false;
             }
@@ -785,7 +751,6 @@ class ClusterAdapter implements AdapterInterface
         
         // 二进制事件包验证 (type = 5)
         if ($packet['type'] === 5) {
-            // 二进制事件包需要事件名和附件编号
             if (!isset($packet['event']) || !is_string($packet['event'])) {
                 return false;
             }
@@ -821,8 +786,6 @@ class ClusterAdapter implements AdapterInterface
         
         // 在本地进程中处理消息
         $this->handleDirectSend($sid, $packet);
-        
-        echo "[adapter] received forwarded message for sid={$sid}\n";
     }
     
     /**
@@ -840,8 +803,6 @@ class ClusterAdapter implements AdapterInterface
             'process_id' => $this->processId,
             'timestamp' => microtime(true)
         ]);
-        
-        echo "[adapter] registered session sid={$sid} in process {$this->processId}\n";
     }
     
     /**
@@ -852,7 +813,6 @@ class ClusterAdapter implements AdapterInterface
     {
         if (isset($this->sessionProcessMap[$sid])) {
             unset($this->sessionProcessMap[$sid]);
-            echo "[adapter] unregistered session sid={$sid}\n";
         }
     }
     
@@ -868,7 +828,6 @@ class ClusterAdapter implements AdapterInterface
         // 更新会话映射表（跳过自己发送的注册消息）
         if ($processId !== $this->processId) {
             $this->sessionProcessMap[$sid] = $processId;
-            echo "[adapter] updated session mapping: sid={$sid} -> process={$processId}\n";
         }
     }
     
@@ -898,7 +857,6 @@ class ClusterAdapter implements AdapterInterface
                 'process_id' => $this->processId,
                 'timestamp' => microtime(true)
             ]);
-            echo "[adapter] responded to session query for sid={$sid}\n";
         }
     }
     
@@ -915,20 +873,13 @@ class ClusterAdapter implements AdapterInterface
         
         // 过滤自己发送的响应（避免自我循环）
         if ($responder === $this->processId) {
-            echo "[adapter] skipping self-response for session query sid={$sid}\n";
             return;
         }
         
         // Socket.IO v4集群协议优化：查询ID匹配验证
-        // 只有当会话正在查询中（sessionProcessMap[$sid] === null）时才接受响应
         if (!isset($this->sessionProcessMap[$sid]) || $this->sessionProcessMap[$sid] !== null) {
-            echo "[adapter] ignoring outdated session response for sid={$sid} (not currently querying)\n";
             return;
         }
-        
-        // 增强查询ID验证：确保响应匹配当前的查询请求
-        // 注意：当sessionProcessMap[$sid]为null时，表示查询中状态
-        // 这种情况下我们接受任何有效的响应，因为可能会有多个并发查询
         
         // 更新会话映射表，包含响应时间戳和来源信息
         $this->sessionProcessMap[$sid] = [
@@ -937,8 +888,6 @@ class ClusterAdapter implements AdapterInterface
             'queryId' => $queryId,
             'responseTime' => microtime(true)
         ];
-        
-        echo "[adapter] received valid session response: sid={$sid} -> process={$processId}\n";
     }
     
     /**
@@ -965,7 +914,6 @@ class ClusterAdapter implements AdapterInterface
                 'process_id' => $this->processId,
                 'timestamp' => microtime(true)
             ]);
-            echo "[adapter] responded to session probe for sid={$sid}\n";
         }
     }
     
@@ -1025,8 +973,6 @@ class ClusterAdapter implements AdapterInterface
                     }
                 }
             }
-            
-            echo "[adapter] session mapping cleanup completed: {$cleanupCount} expired entries removed\n";
         });
     }
     
@@ -1035,7 +981,6 @@ class ClusterAdapter implements AdapterInterface
      */
     public function close(): void
     {
-        // Channel客户端自动管理连接，无需手动关闭
         $this->initialized = false;
     }
     
@@ -1074,13 +1019,12 @@ class ClusterAdapter implements AdapterInterface
                 $channelClientClass::publish($channel, $data);
                 return;
             } catch (\Exception $e) {
-                echo "[adapter] Urgent publish failed: " . $e->getMessage() . "\n";
                 // 重新连接并重试
                 $this->initChannelClient();
                 try {
                     $channelClientClass::publish($channel, $data);
                 } catch (\Exception $e2) {
-                    echo "[adapter] Retry failed, dropping urgent message: " . $e2->getMessage() . "\n";
+                    // 静默丢弃
                 }
                 return;
             }
@@ -1097,7 +1041,6 @@ class ClusterAdapter implements AdapterInterface
         if (count($this->messageQueue) >= $this->maxBatchSize) {
             $this->flushMessageQueue();
         } else if (!$this->batchTimerStarted) {
-            // 启动定时器处理队列
             $this->startBatchTimer();
         }
     }
@@ -1115,20 +1058,17 @@ class ClusterAdapter implements AdapterInterface
         \Workerman\Timer::add($this->batchInterval, function($timerId) {
             if (empty($this->messageQueue)) {
                 $this->batchTimerStarted = false;
-                \Workerman\Timer::del($timerId); // 正确停止定时器
+                \Workerman\Timer::del($timerId);
                 return;
             }
             
             $this->flushMessageQueue();
             
-            // 如果队列清空，停止定时器
             if (empty($this->messageQueue)) {
                 $this->batchTimerStarted = false;
                 \Workerman\Timer::del($timerId);
             }
         });
-        
-        echo "[adapter] Batch timer started with interval: {$this->batchInterval}s\n";
     }
     
     /**
@@ -1141,63 +1081,15 @@ class ClusterAdapter implements AdapterInterface
         }
         
         $messages = array_splice($this->messageQueue, 0, $this->maxBatchSize);
-        $batchCount = count($messages);
         $channelClientClass = $this->getChannelClientClass();
         
         try {
             foreach ($messages as $message) {
                 $channelClientClass::publish($message['channel'], $message['data']);
             }
-            
-            if ($batchCount > 1) {
-                $latency = microtime(true) - $messages[0]['timestamp'];
-                echo "[adapter] Flushed {$batchCount} messages in batch (latency: " . round($latency * 1000, 2) . "ms)\n";
-            }
         } catch (\Exception $e) {
-            echo "[adapter] Batch publish failed: " . $e->getMessage() . ", requeuing {$batchCount} messages\n";
-            
-            // 重新连接
             $this->initChannelClient();
-            
-            // 将失败的消息重新加入队列
             $this->messageQueue = array_merge($messages, $this->messageQueue);
         }
-    }
-    
-    /**
-     * Socket.IO v4集群协议增强：连接健康检查和重连机制
-     */
-    
-    /**
-     * 检查Channel连接健康状态
-     * @return bool 连接是否健康
-     */
-    private function checkChannelHealth(): bool
-    {
-        try {
-            $channelClientClass = $this->getChannelClientClass();
-            // 发送一个测试消息检查连接状态
-            $testData = ['test' => 'health_check', 'timestamp' => microtime(true)];
-            $channelClientClass::publish($this->prefix . 'health_check', $testData);
-            return true;
-        } catch (\Exception $e) {
-            echo "[adapter] Health check failed: " . $e->getMessage() . "\n";
-            return false;
-        }
-    }
-    
-    /**
-     * 连接池优化：定期健康检查和重连
-     */
-    private function startConnectionHealthCheck(): void
-    {
-        \Workerman\Timer::add(30, function() {
-            if (!$this->checkChannelHealth()) {
-                echo "[adapter] Channel connection unhealthy, attempting to reconnect\n";
-                $this->initChannelClient();
-            }
-        });
-        
-        echo "[adapter] Connection health check started (interval: 30s)\n";
     }
 }
