@@ -4,6 +4,7 @@ require_once __DIR__ . '/vendor/autoload.php';
 
 use Workerman\Worker;
 use PhpSocketIO\SocketIOServer;
+use Psr\Log\LogLevel;
 
 // ========================================
 //  ★ 主服务器启动脚本
@@ -15,6 +16,7 @@ try {
         'pingInterval' => 25000,
         'pingTimeout'  => 20000,
         'maxPayload'   => 10485760, // 10MB 最大负载
+        'logLevel'     => LogLevel::DEBUG, // 日志级别
     ]);
 } catch (Exception $e) {
     echo "Error creating server: " . $e->getMessage() . "\n";
@@ -102,7 +104,7 @@ $io->on('connection', function ($socket) use ($io) {
 
     // 二进制事件测试
     $socket->on('binaryEvent', function ($data) use ($socket) {
-        $socket->emit('binaryEvent', $data);
+        $socket->emitBinary('binaryEvent', pack("N","100000"));
     });
 
     // 请求二进制数据

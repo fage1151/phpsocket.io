@@ -69,17 +69,7 @@ class Socket
         }
         
         // 验证事件名称格式，只允许字母、数字、下划线和点
-        $valid = true;
-        $len = strlen($event);
-        for ($i = 0; $i < $len; $i++) {
-            $char = $event[$i];
-            if (!ctype_alnum($char) && $char !== '_' && $char !== '.') {
-                $valid = false;
-                break;
-            }
-        }
-        
-        if (!$valid) {
+        if (!preg_match('/^[a-zA-Z0-9_.]+$/', $event)) {
             throw new \InvalidArgumentException("事件名称格式无效");
         }
         
@@ -234,37 +224,25 @@ class Socket
             return true;
         }
         
-        // 快速检查2：非可打印字符 → 二进制
-        if (!ctype_print($data)) {
-            return true;
-        }
-        
+        // 快速检查2：检查是否包含非 UTF-8 字符或控制字符
         $length = strlen($data);
-        
-        // 快速检查3：较短的数据（<100字节）假设不是二进制
-        if ($length < 100) {
-            // 尝试快速编码检查
-            return @json_encode($data) === false;
-        }
-        
-        // 对于较长数据，只检查前 100 个字符
         $controlCharCount = 0;
         $checkLength = min($length, 100);
         
         for ($i = 0; $i < $checkLength; $i++) {
             $char = ord($data[$i]);
-            // 快速判断控制字符
+            // 快速判断控制字符（除了常见的空白字符）
             if ($char < 32 && $char !== 9 && $char !== 10 && $char !== 13) {
                 $controlCharCount++;
             }
         }
         
-        // 快速阈值判断（不做乘法）
+        // 控制字符过多 → 二进制
         if ($controlCharCount * 10 > $checkLength) {
             return true;
         }
         
-        // 最后检查 UTF-8 编码
+        // 最后检查 JSON 编码是否成功（排除无法 JSON 编码的二进制数据）
         return @json_encode($data) === false;
     }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PhpSocketIO;
 
 use Exception;
+use Psr\Log\LoggerInterface;
 
 /**
  * Engine.IO 协议处理器
@@ -19,6 +20,15 @@ class EngineIOHandler
     private $roomManager = null;   // 房间管理器
     private $onSocketIOMessage = null; // Socket.IO消息处理回调
     private $onBinaryMessage = null; // 二进制消息处理回调
+    private ?LoggerInterface $logger = null; // PSR-3 日志记录器
+
+    /**
+     * 设置日志记录器
+     */
+    public function setLogger(LoggerInterface $logger): void
+    {
+        $this->logger = $logger;
+    }
 
 
     /**
@@ -69,6 +79,12 @@ class EngineIOHandler
      */
     public function handlePacket($data, $packet, $connection, Session $session)
     {
+        $this->logger?->debug('Engine.IO 收到数据包', [
+            'sid' => $session->sid,
+            'type' => $packet['type'],
+            'transport' => $session->transport
+        ]);
+        
         switch ($packet['type']) {
             case 'ping':
                 return $this->handleHeartbeat($connection, $session, $packet);
@@ -82,6 +98,12 @@ class EngineIOHandler
                 // 客户端发送"5"表示升级完成确认
                 $session->upgraded = true;
                 
+                $this->logger?->info('Engine.IO 协议升级完成', [
+                    'sid' => $session->sid,
+                    'from' => 'polling',
+                    'to' => 'websocket'
+                ]);
+                
                 // 先发送队列里的所有消息
                 $messages = $session->flush();
                 foreach ($messages as $msg) {
@@ -94,6 +116,10 @@ class EngineIOHandler
             case 'noop':
                 return true; // 忽略空操作
             default:
+                $this->logger?->warning('Engine.IO 收到未知数据包类型', [
+                    'sid' => $session->sid,
+                    'type' => $packet['type']
+                ]);
                 return false;
         }
     }
@@ -105,13 +131,15 @@ class EngineIOHandler
     {
         if (isset($packetData['data']) && $packetData['data'] === 'probe') {
             // 处理WebSocket升级探测包
+            $this->logger?->debug('Engine.IO 收到升级探测包', [
+                'sid' => $session->sid
+            ]);
             $connection->send('3probe');
             $session->updateLastPong();
             return true;
         }
         
         // 普通ping包，发送pong响应
-        $connection->send('3');
         $session->updateLastPong();
         
         return true;
@@ -170,6 +198,13 @@ class EngineIOHandler
     
         $packet = PacketParser::buildEngineIOPacket('open', $handshake);
         $connection->send($packet);
+        
+        $this->logger?->info('Engine.IO 握手完成', [
+            'sid' => $session->sid,
+            'transports' => $connection->isWs ? ['websocket'] : ['polling', 'websocket'],
+            'pingInterval' => $this->pingInterval,
+            'pingTimeout' => $this->pingTimeout
+        ]);
     }
 
     /**

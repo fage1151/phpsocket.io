@@ -6,6 +6,7 @@ namespace PhpSocketIO;
 
 use ReflectionFunction;
 use ReflectionException;
+use Psr\Log\LoggerInterface;
 
 /**
  * Socket.IO 事件处理器
@@ -19,6 +20,15 @@ class EventHandler
     private $middlewares       = []; // 中间件队列
     private $ackCallbacks      = []; // ACK回调存储
     private $server            = null; // Socket.IO服务器实例
+    private ?LoggerInterface $logger = null; // PSR-3 日志记录器
+
+    /**
+     * 设置日志记录器
+     */
+    public function setLogger(LoggerInterface $logger): void
+    {
+        $this->logger = $logger;
+    }
 
     /**
      * 构造函数
@@ -224,6 +234,11 @@ class EventHandler
         $socket['namespace'] = $namespace;
         $this->connectedSockets[$socket['id']] = $socket;
         
+        $this->logger?->info('Socket.IO 客户端连接到命名空间', [
+            'sid' => $socket['id'],
+            'namespace' => $namespace
+        ]);
+        
         // 将socket添加到命名空间
         if (isset($this->namespaceHandlers[$namespace])) {
             $this->namespaceHandlers[$namespace]['sockets'][$socket['id']] = $socket;
@@ -294,6 +309,12 @@ class EventHandler
     {
         $namespace = $socket['namespace'] ?? '/';
         $socketId = $socket['id'] ?? '';
+        
+        $this->logger?->info('Socket.IO 客户端断开连接', [
+            'sid' => $socketId,
+            'namespace' => $namespace,
+            'reason' => $reason
+        ]);
         
         // 从命名空间移除socket
         if (isset($this->namespaceHandlers[$namespace])) {

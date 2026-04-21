@@ -116,7 +116,7 @@ $io = new SocketIOServer('0.0.0.0:8088', [
     'pingTimeout'  => 20000,  // 心跳超时（毫秒）
     'maxPayload'   => 10485760, // 最大负载（字节）
     'workerCount'  => 1,       // worker 数量，默认为 1
-    'log_level'    => \Psr\Log\LogLevel::INFO, // 日志级别
+    'logLevel'     => \Psr\Log\LogLevel::INFO, // 日志级别
 ]);
 
 // 连接事件处理
@@ -144,7 +144,7 @@ Worker::runAll();
 ```php
 // 1. 使用内置日志器（默认）
 $io = new SocketIOServer('0.0.0.0:8088', [
-    'log_level' => \Psr\Log\LogLevel::DEBUG
+    'logLevel' => \Psr\Log\LogLevel::DEBUG
 ]);
 
 // 2. 设置自定义日志处理器
@@ -279,7 +279,7 @@ $io->on('connection', function ($socket) {
 | `pingTimeout` | int | 20000 | 心跳超时（毫秒） |
 | `maxPayload` | int | 10485760 | 最大负载大小（字节） |
 | `workerCount` | int | 1 | Worker 进程数量 |
-| `log_level` | string | `LogLevel::INFO` | 日志级别（PSR-3） |
+| `logLevel` | string | `LogLevel::INFO` | 日志级别（PSR-3） |
 | `ssl` | array | [] | SSL 配置（用于 HTTPS/WSS） |
 
 ## Composer 脚本
