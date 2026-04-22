@@ -4,7 +4,7 @@
 
 ## 特性
 
-- **多传输协议支持**: 支持 WebSocket 和 HTTP Long-Polling
+- **多传输协议支持**: 支持 WebSocket 和 HTTP Long-Polling（多进程模式下仅支持 WebSocket，且需要显式使用）
 - **二进制数据支持**: 支持二进制事件传输
 - **集群支持**: 通过 Channel 或 Redis 实现多进程集群通信
 - **房间管理**: 支持房间（Room）管理功能
@@ -323,4 +323,4 @@ composer analyse
 
 ## 许可证
 
-本项目采用 MIT 许可证，详见 [LICENSE](LICENSE) 文件。
+本项目采用 Mulan PSL v2 许可证，详见 [LICENSE](LICENSE) 文件。

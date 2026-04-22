@@ -68,6 +68,12 @@ $io = new SocketIOServer('0.0.0.0:8088', [
 
 - **workerCount**: worker进程数量，默认为1。当设置为大于1时，必须通过setAdapter方法设置adapter。
 
+#### 重要说明
+
+- **Long-Polling 传输**：当使用多进程（workerCount > 1）时，**不支持** HTTP Long-Polling 传输方式。
+- **WebSocket 传输**：在多进程模式下，WebSocket 传输完全支持，**必须使用** WebSocket 连接。
+- **客户端连接**：在多进程模式下，客户端需要显式使用 WebSocket 传输。
+
 #### 多worker配置示例
 
 ```php
