@@ -264,7 +264,9 @@ class EventHandler
             $adapter = $serverManager ? $serverManager->getAdapter() : null;
             
             // 创建唯一的Socket类实例来注册事件监听器
-            $realSocket = new \PhpSocketIO\Socket($socket['session']->sid, $socket['namespace'], $socketIOServer, $socket['connection']);
+            $sessionId = isset($socket['session']) ? $socket['session']->sid : null;
+            $connection = $socket['connection'] ?? null;
+            $realSocket = new \PhpSocketIO\Socket($sessionId, $socket['namespace'], $socketIOServer, $connection);
             
             // 集群环境下自动注册会话
             if ($serverManager && $serverManager->isClusterEnabled() && $adapter) {
@@ -290,7 +292,9 @@ class EventHandler
             if ($socketIOServer) {
                 // 如果已经创建过Socket实例，重用同一个实例（避免创建两个实例）
                 if (!isset($realSocket)) {
-                    $realSocket = new \PhpSocketIO\Socket($socket['session']->sid, $socket['namespace'], $socketIOServer, $socket['connection']);
+                    $sessionId = isset($socket['session']) ? $socket['session']->sid : null;
+                    $connection = $socket['connection'] ?? null;
+                    $realSocket = new \PhpSocketIO\Socket($sessionId, $socket['namespace'], $socketIOServer, $connection);
                 }
                 
                 call_user_func($this->namespaceHandlers[$namespace]['connect'], $realSocket);
@@ -751,6 +755,23 @@ class EventHandler
         }
         
         return false;
+    }
+    
+    /**
+     * 获取事件处理器
+     * @param string $namespace 命名空间
+     * @param string $eventName 事件名称
+     * @return callable|null 事件处理器
+     */
+    public function getEventHandler($namespace, $eventName)
+    {
+        $namespace = $namespace === '' ? '/' : $namespace;
+        
+        if (isset($this->namespaceHandlers[$namespace]['events'][$eventName])) {
+            return $this->namespaceHandlers[$namespace]['events'][$eventName];
+        }
+        
+        return null;
     }
 
     /**

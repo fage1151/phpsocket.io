@@ -3,7 +3,7 @@
     "description": "Socket.IO v4 compatible server based on Workerman",
     "type": "library",
     "keywords": ["socket.io", "websocket", "workerman", "realtime", "real-time"],
-    "license": "MIT",
+    "license": "MulanPSL-2.0",
     "require": {
         "php": ">=8.1",
         "workerman/workerman": "^4.1",

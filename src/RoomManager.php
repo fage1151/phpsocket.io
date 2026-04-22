@@ -69,8 +69,12 @@ final class RoomManager
 
         if ($this->server) {
             $adapter = $this->server->getAdapter();
-            if ($adapter) {
-                $adapter->join($sid, $room);
+            if ($adapter && method_exists($adapter, 'join')) {
+                try {
+                    $adapter->join($sid, $room);
+                } catch (\Exception $e) {
+                    // 静默处理 Adapter 异常，确保本地房间操作仍然成功
+                }
             }
         }
         return true;
@@ -115,8 +119,12 @@ final class RoomManager
 
         if ($this->server) {
             $adapter = $this->server->getAdapter();
-            if ($adapter) {
-                $adapter->leave($sid, $room);
+            if ($adapter && method_exists($adapter, 'leave')) {
+                try {
+                    $adapter->leave($sid, $room);
+                } catch (\Exception $e) {
+                    // 静默处理 Adapter 异常，确保本地房间操作仍然成功
+                }
             }
         }
         return true;
@@ -159,8 +167,12 @@ final class RoomManager
 
         if ($this->server) {
             $adapter = $this->server->getAdapter();
-            if ($adapter) {
-                $adapter->remove($sid);
+            if ($adapter && method_exists($adapter, 'remove')) {
+                try {
+                    $adapter->remove($sid);
+                } catch (\Exception $e) {
+                    // 静默处理 Adapter 异常，确保本地房间操作仍然成功
+                }
             }
         }
         return true;
@@ -176,8 +188,12 @@ final class RoomManager
     {
         if ($this->server) {
             $adapter = $this->server->getAdapter();
-            if ($adapter) {
-                return $adapter->clients($room);
+            if ($adapter && method_exists($adapter, 'clients')) {
+                try {
+                    return $adapter->clients($room);
+                } catch (\Exception $e) {
+                    // 静默处理 Adapter 异常，回退到本地房间成员列表
+                }
             }
         }
         return array_keys($this->rooms[$room] ?? []);

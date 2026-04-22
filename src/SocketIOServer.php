@@ -819,10 +819,10 @@ class SocketIOServer
             ]);
             
             $foundHandler = false;
-            // 直接从EventHandler获取该命名空间的事件处理器
+            // 从EventHandler获取该命名空间的事件处理器
             $handler = null;
-            if (isset($this->eventHandler->namespaceHandlers[$namespace]['events'][$eventName])) {
-                $handler = $this->eventHandler->namespaceHandlers[$namespace]['events'][$eventName];
+            if ($this->eventHandler->hasEventHandler($namespace, $eventName)) {
+                $handler = $this->eventHandler->getEventHandler($namespace, $eventName);
                 $this->logger->debug('Found EventHandler level handler', [
                     'namespace' => $namespace,
                     'eventName' => $eventName,

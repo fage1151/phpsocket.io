@@ -243,6 +243,24 @@ class Socket
             return true;
         }
         
+        // 快速检查3：检查是否为常见的二进制文件签名（魔术数字）
+        $magicNumbers = [
+            "\x89PNG", // PNG
+            "GIF8", // GIF
+            "JFIF", // JPEG
+            "RIFF", // AVI, WAV
+            "ID3", // MP3
+            "PK\x03\x04", // ZIP
+            "\x1F\x8B", // GZIP
+            "\x42\x4D", // BMP
+        ];
+        
+        foreach ($magicNumbers as $magic) {
+            if (str_starts_with($data, $magic)) {
+                return true;
+            }
+        }
+        
         // 使用mbstring检测UTF-8编码（如果mbstring扩展可用）
         if (function_exists('mb_check_encoding')) {
             // 使用mb_check_encoding进行可靠的UTF-8检测
@@ -405,8 +423,16 @@ class Socket
             $callback = array_pop($args);
         }
         
-        // 生成ACK ID
-        $ackId = $this->session ? count($this->session->ackCallbacks) + 1 : 1;
+        // 生成会话唯一的ACK ID
+        if ($this->session) {
+            if (!isset($this->session->ackIdCounter)) {
+                $this->session->ackIdCounter = 0;
+            }
+            $ackId = ++$this->session->ackIdCounter;
+        } else {
+            // 如果没有会话，使用随机ID
+            $ackId = uniqid('ack_', true);
+        }
         
         // 存储回调函数（同时在Session和EventHandler中都存储）
         if ($callback) {

@@ -126,7 +126,7 @@ class Logger extends AbstractLogger
      */
     private function defaultHandler(string $message): void
     {
-        if (defined('STDOUT')) {
+        if (defined('STDOUT') && is_resource(STDOUT)) {
             fwrite(STDOUT, $message . PHP_EOL);
         } else {
             echo $message . PHP_EOL;

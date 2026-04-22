@@ -138,8 +138,9 @@ final class ServerManager
             $errors[] = 'pingTimeout must be greater than 0';
         }
         
+        // 警告：pingInterval 应该大于 pingTimeout，但不视为错误
         if ($this->pingInterval <= $this->pingTimeout) {
-            $errors[] = 'pingInterval should be greater than pingTimeout';
+            $errors[] = 'pingInterval is recommended to be greater than pingTimeout';
         }
         
         return $errors;
