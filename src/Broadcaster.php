@@ -132,6 +132,20 @@ final class Broadcaster
      */
     private function emitToRooms(string $event, array $args): void
     {
+        $adapter = $this->server->getAdapter();
+        if ($adapter) {
+            $rooms = is_array($this->targetRoom) ? $this->targetRoom : [$this->targetRoom];
+            foreach ($rooms as $room) {
+                $packet = PacketParser::buildSocketIOPacket('EVENT', [
+                    'namespace' => $this->namespace,
+                    'event' => $event,
+                    'data' => $args
+                ]);
+                $packetArray = PacketParser::parseSocketIOPacket($packet);
+                $adapter->to($room, $packetArray);
+            }
+            return;
+        }
         $rooms = is_array($this->targetRoom) ? $this->targetRoom : [$this->targetRoom];
         $roomManager = $this->server->getRoomManager();
         foreach ($rooms as $room) {
@@ -151,6 +165,17 @@ final class Broadcaster
      */
     private function emitToAll(string $event, array $args): void
     {
+        $adapter = $this->server->getAdapter();
+        if ($adapter) {
+            $packet = PacketParser::buildSocketIOPacket('EVENT', [
+                'namespace' => $this->namespace,
+                'event' => $event,
+                'data' => $args
+            ]);
+            $packetArray = PacketParser::parseSocketIOPacket($packet);
+            $adapter->broadcast($packetArray);
+            return;
+        }
         $sockets = $this->server->fetchSockets($this->namespace);
         foreach ($sockets as $socket) {
             if ($this->shouldExclude($socket->sid)) {

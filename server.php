@@ -5,6 +5,7 @@ require_once __DIR__ . '/vendor/autoload.php';
 use Workerman\Worker;
 use PhpSocketIO\SocketIOServer;
 use Psr\Log\LogLevel;
+use PhpSocketIO\Adapter\ClusterAdapter;
 
 try {
     $io = new SocketIOServer('0.0.0.0:8088', [
@@ -17,6 +18,8 @@ try {
     echo "Error creating server: " . $e->getMessage() . "\n";
     exit(1);
 }
+
+// 启动服务器（必须在设置 adapter 之后调用）
 
 $io->on('connection', function ($socket) use ($io) {
     $socket->emit('welcome', 'Welcome to Socket.IO server!');
@@ -121,4 +124,5 @@ $io->on('connection', function ($socket) use ($io) {
     });
 }, '/test');
 
+$io->start();
 Worker::runAll();

@@ -383,6 +383,11 @@ class EngineIOHandler
             $session->connection->close();
         }
         
+        // 从所有房间中移除
+        if ($this->roomManager) {
+            $this->roomManager->leaveAllRooms($session->sid);
+        }
+        
         // 从会话池中移除
         Session::remove($session->sid);
     }

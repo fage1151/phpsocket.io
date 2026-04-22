@@ -27,8 +27,6 @@ final class ServerManager
         $this->workerCount = $config['workerCount'] ?? 1;
         $this->cors = $config['cors'] ?? null;
         $this->serverOptions = $config;
-        
-        $this->validateConfig();
     }
 
     public function setConfig(array $config): void
@@ -38,15 +36,41 @@ final class ServerManager
         $this->workerCount = $config['workerCount'] ?? $this->workerCount;
         $this->cors = $config['cors'] ?? $this->cors;
         $this->serverOptions = array_merge($this->serverOptions, $config);
+    }
+    
+    /**
+     * 在启动服务器前验证配置
+     */
+    public function validateConfigBeforeStart(): void
+    {
+        $errors = $this->validateConfig();
         
-        $this->validateConfig();
+        // 检查是否需要 adapter
+        if ($this->workerCount > 1 && !$this->clusterEnabled) {
+            $errors[] = 'When workerCount > 1, adapter must be set via setAdapter method';
+        }
+        
+        if (!empty($errors)) {
+            // 收集所有错误为一个消息
+            $errorMsg = implode('; ', $errors);
+            throw new \RuntimeException($errorMsg);
+        }
     }
 
     public function setAdapter(AdapterInterface $adapter): void
     {
         $this->adapter = $adapter;
-        $this->adapter->init();
         $this->clusterEnabled = true;
+    }
+    
+    /**
+     * 初始化 Adapter（必须在 Workerman 环境中调用）
+     */
+    public function initAdapter(): void
+    {
+        if ($this->adapter && $this->clusterEnabled) {
+            $this->adapter->init();
+        }
     }
 
     public function getAdapter(): ?AdapterInterface
@@ -116,10 +140,6 @@ final class ServerManager
         
         if ($this->pingInterval <= $this->pingTimeout) {
             $errors[] = 'pingInterval should be greater than pingTimeout';
-        }
-        
-        if ($this->workerCount > 1 && !$this->clusterEnabled) {
-            throw new \RuntimeException('When workerCount > 1, adapter must be set via setAdapter method');
         }
         
         return $errors;

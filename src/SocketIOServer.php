@@ -34,13 +34,23 @@ class SocketIOServer
      * 会话到Socket实例的映射缓存
      */
     private $sessionSocketMap = [];
+    
+    /**
+     * 保存监听地址和选项（用于延迟启动）
+     */
+    private ?string $listenAddress = null;
+    private ?int $listenPort = null;
+    private array $listenContext = [];
 
     public function __construct(string $listen, array $options = [])
     {
         $this->initializeLogger($options);
         $this->initializeComponents($options);
         $this->configureComponents();
-        $this->parseAndStart($listen, $options);
+        $this->parseListenAddress($listen, $options);
+        
+        // 不自动启动，总是等待用户调用 start()
+        // 这样无论 workerCount 是多少，都可以正确设置 adapter 后再启动
     }
     
     /**
@@ -77,6 +87,7 @@ class SocketIOServer
         // 设置依赖
         $this->engineIoHandler->setEventHandler($this->eventHandler);
         $this->engineIoHandler->setRoomManager($this->roomManager);
+        $this->roomManager->setServer($this);
         
         // 设置回调
         $this->engineIoHandler->setSocketIOMessageHandler(fn(string $message, $connection, $session) => 
@@ -89,9 +100,20 @@ class SocketIOServer
     }
     
     /**
-     * 解析监听地址并启动服务器
+     * 手动启动服务器
      */
-    private function parseAndStart(string $listen, array $options): void
+    public function start(): void
+    {
+        if ($this->listenPort === null || $this->listenAddress === null) {
+            throw new \RuntimeException('No listen address configured');
+        }
+        $this->listen($this->listenPort, $this->listenAddress, $this->listenContext);
+    }
+    
+    /**
+     * 解析监听地址（不启动服务器）
+     */
+    private function parseListenAddress(string $listen, array $options): void
     {
         $this->serverManager->setConfig($options);
         
@@ -106,14 +128,15 @@ class SocketIOServer
             throw new \Exception('Invalid listen format. Use "address:port" format.');
         }
         
-        $address = substr($listen, 0, $colonPos);
+        $this->listenAddress = substr($listen, 0, $colonPos);
         $portStr = substr($listen, $colonPos + 1);
         
         if (!ctype_digit($portStr)) {
             throw new \Exception('Invalid listen format. Use "address:port" format.');
         }
         
-        $this->listen((int)$portStr, $address, ['ssl' => ($options['ssl'] ?? [])]);
+        $this->listenPort = (int)$portStr;
+        $this->listenContext = ['ssl' => ($options['ssl'] ?? [])];
     }
     
     /**
@@ -307,6 +330,9 @@ class SocketIOServer
      */
     public function listen(int $port = 8088, string $address = '0.0.0.0', array $context = []): void
     {
+        // 在启动服务器前验证配置
+        $this->serverManager->validateConfigBeforeStart();
+        
         // 提取SSL配置
         $sslConfig = $context['ssl'] ?? [];
         
@@ -331,14 +357,21 @@ class SocketIOServer
         $worker->onClose = [$this, 'onClose'];
         $worker->onError = [$this, 'onError'];
         
-        // 启动心跳定时器
-        $worker->onWorkerStart = function() use ($address, $port, $sslConfig) {
+        // 启动心跳定时器和初始化 Adapter
+        $worker->onWorkerStart = function($worker) use ($address, $port, $sslConfig) {
+            // 在 Workerman 环境中初始化 Adapter
+            $this->serverManager->initAdapter();
             $this->startHeartbeat();
-            $this->logger->info('Socket.IO server started', [
-                'address' => $address,
-                'port' => $port,
-                'ssl' => !empty($sslConfig)
-            ]);
+            
+            // 只在第一个 Worker（id 0）打印启动日志，避免重复
+            if ($worker->id === 0) {
+                $this->logger->info('Socket.IO server started', [
+                    'address' => $address,
+                    'port' => $port,
+                    'ssl' => !empty($sslConfig),
+                    'workerCount' => $this->serverManager->getWorkerCount()
+                ]);
+            }
         };
     }
 

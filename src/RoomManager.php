@@ -14,6 +14,13 @@ namespace PhpSocketIO;
 final class RoomManager
 {
     /**
+     * Socket.IO服务器实例
+     *
+     * @var SocketIOServer|null
+     */
+    private ?SocketIOServer $server = null;
+
+    /**
      * 房间成员映射
      *
      * @var array
@@ -26,6 +33,17 @@ final class RoomManager
      * @var array
      */
     private array $sessionRooms = [];
+
+    /**
+     * 设置Socket.IO服务器实例
+     *
+     * @param SocketIOServer $server Socket.IO服务器实例
+     * @return void
+     */
+    public function setServer(SocketIOServer $server): void
+    {
+        $this->server = $server;
+    }
 
     /**
      * 将会话加入房间
@@ -47,6 +65,13 @@ final class RoomManager
         }
         if (!isset($this->sessionRooms[$sid][$room])) {
             $this->sessionRooms[$sid][$room] = true;
+        }
+
+        if ($this->server) {
+            $adapter = $this->server->getAdapter();
+            if ($adapter) {
+                $adapter->join($sid, $room);
+            }
         }
         return true;
     }
@@ -87,6 +112,13 @@ final class RoomManager
                 unset($this->sessionRooms[$sid]);
             }
         }
+
+        if ($this->server) {
+            $adapter = $this->server->getAdapter();
+            if ($adapter) {
+                $adapter->leave($sid, $room);
+            }
+        }
         return true;
     }
 
@@ -124,6 +156,13 @@ final class RoomManager
             }
             unset($this->sessionRooms[$sid]);
         }
+
+        if ($this->server) {
+            $adapter = $this->server->getAdapter();
+            if ($adapter) {
+                $adapter->remove($sid);
+            }
+        }
         return true;
     }
 
@@ -135,6 +174,12 @@ final class RoomManager
      */
     public function getRoomMembers(string $room): array
     {
+        if ($this->server) {
+            $adapter = $this->server->getAdapter();
+            if ($adapter) {
+                return $adapter->clients($room);
+            }
+        }
         return array_keys($this->rooms[$room] ?? []);
     }
 
