@@ -421,7 +421,6 @@ final class PacketParser
     public static function buildEngineIOPacket(string $type, mixed $data = ''): string
     {
         $enumType = null;
-        $type = strtoupper($type);
         foreach (EnginePacketType::cases() as $case) {
             if ($case->name === $type) {
                 $enumType = $case;
