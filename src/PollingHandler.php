@@ -38,6 +38,7 @@ final class PollingHandler
     {
         $session = new Session(Session::generateSid());
         $session->transport = 'polling';
+        $session->isPollingUpgrade = true; // 标记这是一个从轮询升级的会话
 
         $body = '0' . json_encode([
             'sid' => $session->sid,

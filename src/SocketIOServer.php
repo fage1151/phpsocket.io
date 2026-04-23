@@ -271,6 +271,11 @@ class SocketIOServer
     private function handleSocketIOMessage(string $message, mixed $connection, Session $session): void
     {
         try {
+            $this->logger->debug('处理 Socket.IO 消息', [
+                'sid' => $session->sid,
+                'message' => substr($message, 0, 100)
+            ]);
+            
             $packet = $this->parseSocketIOPacket($message, $session);
             if (!$packet) {
                 return;
@@ -487,6 +492,11 @@ class SocketIOServer
     
     private function handleConnectPacket(mixed $connection, Session $session, string $namespace, mixed $authData): void
     {
+        $this->logger->debug('处理连接包', [
+            'sid' => $session->sid,
+            'namespace' => $namespace
+        ]);
+        
         $session->namespaces[$namespace] = true;
         
         $sessionKey = "{$session->sid}:{$namespace}";
@@ -512,7 +522,18 @@ class SocketIOServer
         ]);
         
         $engineIoPacket = '4' . $socketIoPacket;
-        $session->send($engineIoPacket);
+        
+        $this->logger->debug('发送连接确认包', [
+            'sid' => $session->sid,
+            'packet' => $engineIoPacket
+        ]);
+        
+        $result = $session->send($engineIoPacket);
+        
+        $this->logger->debug('连接确认包发送结果', [
+            'sid' => $session->sid,
+            'result' => $result
+        ]);
     }
     
     private function handleDisconnectPacket(mixed $connection, Session $session, string $namespace): void

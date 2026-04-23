@@ -28,6 +28,7 @@ final class Session
     public int $lastPing = 0;
     public bool $isWs = false;
     public bool $upgraded = false;
+    public bool $isPollingUpgrade = false; // 标记是否是从轮询升级来的
     public readonly int $createdAt;
     public int $messageCount = 0;
     public int $errorCount = 0;
@@ -123,14 +124,22 @@ final class Session
             $this->isWs = true;
             $this->transport = 'websocket';
             
-            if (!$this->upgraded) {
+            // 如果是从轮询升级来的，并且还没有升级完成，就加入队列
+            if ($this->isPollingUpgrade && !$this->upgraded) {
                 $this->enqueue($packet);
                 return true;
             }
-
+            
+            // 否则直接通过 WebSocket 发送
             try {
-                return HttpRequestHandler::sendWsFrame($this->connection, $packet, false);
-            } catch (\Exception) {
+                $result = HttpRequestHandler::sendWsFrame($this->connection, $packet, false);
+                // 如果是从轮询升级来的，发送成功后标记为升级完成
+                if ($this->isPollingUpgrade && !$this->upgraded) {
+                    $this->upgraded = true;
+                }
+                return $result;
+            } catch (\Exception $e) {
+                error_log('Session::send WebSocket 发送失败: ' . $e->getMessage());
                 return false;
             }
         }

@@ -105,6 +105,8 @@ final class HttpRequestHandler
             $session->transport = 'websocket';
             $session->isWs = true;
             $session->connection = $connection;
+            $session->isPollingUpgrade = false; // 这是直接的 WebSocket 连接，不是从轮询升级来的
+            $session->upgraded = true; // 直接标记为升级完成
 
             $this->performWebSocketHandshake($connection, $req, $sid);
 

@@ -191,7 +191,7 @@ class EngineIOHandler
             'pingTimeout' => $this->pingTimeout
         ];
     
-        $packet = PacketParser::buildEngineIOPacket('open', $handshake);
+        $packet = PacketParser::buildEngineIOPacket('OPEN', $handshake);
         if (is_object($connection) && method_exists($connection, 'send')) {
             $connection->send($packet);
         }
@@ -213,7 +213,7 @@ class EngineIOHandler
             ? PacketParser::buildSocketIOPacket('EVENT', $data) 
             : $data;
         
-        $engineIOPacket = PacketParser::buildEngineIOPacket('message', $socketIOPacket);
+        $engineIOPacket = PacketParser::buildEngineIOPacket('MESSAGE', $socketIOPacket);
         $session->send($engineIOPacket);
     }
 
@@ -376,18 +376,39 @@ class EngineIOHandler
      */
     public function processWebSocketData(Session $session, mixed $data): void
     {
+        $this->logger?->debug('WebSocket 收到数据', [
+            'sid' => $session->sid,
+            'data' => is_string($data) ? substr($data, 0, 100) : gettype($data),
+            'upgraded' => $session->upgraded,
+            'isPollingUpgrade' => $session->isPollingUpgrade
+        ]);
+        
         $packet = PacketParser::parseEngineIOPacket($data);
         if (!$packet) {
+            $this->logger?->warning('无法解析 Engine.IO 数据包', ['sid' => $session->sid]);
             return;
         }
+        
+        $this->logger?->debug('解析出 Engine.IO 数据包', [
+            'sid' => $session->sid,
+            'type' => $packet['type']
+        ]);
         
         if (!$session->connection) {
+            $this->logger?->warning('Session 没有 connection', ['sid' => $session->sid]);
             return;
         }
         
-        $allowedTypesBeforeUpgrade = ['PING', 'PONG', 'UPGRADE', 'NOOP'];
-        if (!$session->upgraded && !in_array($packet['type'], $allowedTypesBeforeUpgrade)) {
-            return;
+        // 如果是从轮询升级来的，并且还没升级完成，只允许特定类型的数据包
+        if ($session->isPollingUpgrade && !$session->upgraded) {
+            $allowedTypesBeforeUpgrade = ['PING', 'PONG', 'UPGRADE', 'NOOP'];
+            if (!in_array($packet['type'], $allowedTypesBeforeUpgrade)) {
+                $this->logger?->warning('从轮询升级过程中，不允许的数据包类型', [
+                    'sid' => $session->sid,
+                    'type' => $packet['type']
+                ]);
+                return;
+            }
         }
         
         $this->handlePacket($data, $packet, $session->connection, $session);
