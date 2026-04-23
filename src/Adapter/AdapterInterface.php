@@ -14,7 +14,7 @@ interface AdapterInterface
      * 初始化适配器
      * @param array $config 配置参数
      */
-    public function init(array $config): void;
+    public function init(array $config = []): void;
     
     /**
      * 广播消息到所有进程
@@ -59,7 +59,7 @@ interface AdapterInterface
     /**
      * 获取房间成员列表
      * @param string $room 房间名称
-     * @return array 成员会话ID列表
+     * @return array<string> 成员会话ID列表
      */
     public function clients(string $room): array;
     

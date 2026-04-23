@@ -5,103 +5,40 @@ declare(strict_types=1);
 namespace PhpSocketIO;
 
 /**
- * Socket.IO 房间管理器类
- *
- * 管理房间成员关系和房间操作
+ * Socket.IO 房间管理器类 - PHP 8.1+ 深度优化版本
  *
  * @package PhpSocketIO
  */
 final class RoomManager
 {
-    /**
-     * Socket.IO服务器实例
-     *
-     * @var SocketIOServer|null
-     */
     private ?SocketIOServer $server = null;
-
-    /**
-     * 房间成员映射
-     *
-     * @var array
-     */
     private array $rooms = [];
-
-    /**
-     * 会话房间映射
-     *
-     * @var array
-     */
     private array $sessionRooms = [];
 
-    /**
-     * 设置Socket.IO服务器实例
-     *
-     * @param SocketIOServer $server Socket.IO服务器实例
-     * @return void
-     */
     public function setServer(SocketIOServer $server): void
     {
         $this->server = $server;
     }
 
-    /**
-     * 将会话加入房间
-     *
-     * @param string $sid 会话ID
-     * @param string $room 房间名
-     * @return bool
-     */
     public function joinRoom(string $sid, string $room): bool
     {
-        if (!isset($this->rooms[$room])) {
-            $this->rooms[$room] = [];
-        }
-        if (!isset($this->rooms[$room][$sid])) {
-            $this->rooms[$room][$sid] = true;
-        }
-        if (!isset($this->sessionRooms[$sid])) {
-            $this->sessionRooms[$sid] = [];
-        }
-        if (!isset($this->sessionRooms[$sid][$room])) {
-            $this->sessionRooms[$sid][$room] = true;
-        }
+        $this->rooms[$room] ??= [];
+        $this->rooms[$room][$sid] = true;
+        $this->sessionRooms[$sid] ??= [];
+        $this->sessionRooms[$sid][$room] = true;
 
         if ($this->server) {
             $adapter = $this->server->getAdapter();
-            if ($adapter && method_exists($adapter, 'join')) {
-                try {
-                    $adapter->join($sid, $room);
-                } catch (\Exception $e) {
-                    // 静默处理 Adapter 异常，确保本地房间操作仍然成功
-                }
-            }
+            $adapter?->join($sid, $room);
         }
         return true;
     }
 
-    /**
-     * 将会话加入房间
-     *
-     * @param string $room 房间名
-     * @param Session|null $session 会话实例
-     * @return bool
-     */
     public function join(string $room, ?Session $session = null): bool
     {
-        if ($session === null) {
-            return false;
-        }
-        return $this->joinRoom($session->sid, $room);
+        return $session !== null && $this->joinRoom($session->sid, $room);
     }
 
-    /**
-     * 将会话离开房间
-     *
-     * @param string $sid 会话ID
-     * @param string $room 房间名
-     * @return bool
-     */
     public function leaveRoom(string $sid, string $room): bool
     {
         if (isset($this->rooms[$room])) {
@@ -110,6 +47,7 @@ final class RoomManager
                 unset($this->rooms[$room]);
             }
         }
+        
         if (isset($this->sessionRooms[$sid])) {
             unset($this->sessionRooms[$sid][$room]);
             if (empty($this->sessionRooms[$sid])) {
@@ -119,38 +57,16 @@ final class RoomManager
 
         if ($this->server) {
             $adapter = $this->server->getAdapter();
-            if ($adapter && method_exists($adapter, 'leave')) {
-                try {
-                    $adapter->leave($sid, $room);
-                } catch (\Exception $e) {
-                    // 静默处理 Adapter 异常，确保本地房间操作仍然成功
-                }
-            }
+            $adapter?->leave($sid, $room);
         }
         return true;
     }
 
-    /**
-     * 将与会话离开房间
-     *
-     * @param string $room 房间名
-     * @param Session|null $session 会话实例
-     * @return bool
-     */
     public function leave(string $room, ?Session $session = null): bool
     {
-        if ($session === null) {
-            return false;
-        }
-        return $this->leaveRoom($session->sid, $room);
+        return $session !== null && $this->leaveRoom($session->sid, $room);
     }
 
-    /**
-     * 将会话从所有房间中移除
-     *
-     * @param string $sid 会话ID
-     * @return bool
-     */
     public function leaveAllRooms(string $sid): bool
     {
         if (isset($this->sessionRooms[$sid])) {
@@ -167,131 +83,66 @@ final class RoomManager
 
         if ($this->server) {
             $adapter = $this->server->getAdapter();
-            if ($adapter && method_exists($adapter, 'remove')) {
-                try {
-                    $adapter->remove($sid);
-                } catch (\Exception $e) {
-                    // 静默处理 Adapter 异常，确保本地房间操作仍然成功
-                }
-            }
+            $adapter?->remove($sid);
         }
         return true;
     }
 
-    /**
-     * 获取房间成员列表
-     *
-     * @param string $room 房间名
-     * @return array
-     */
     public function getRoomMembers(string $room): array
     {
         if ($this->server) {
             $adapter = $this->server->getAdapter();
-            if ($adapter && method_exists($adapter, 'clients')) {
+            if ($adapter) {
                 try {
                     return $adapter->clients($room);
-                } catch (\Exception $e) {
-                    // 静默处理 Adapter 异常，回退到本地房间成员列表
+                } catch (\Exception) {
                 }
             }
         }
         return array_keys($this->rooms[$room] ?? []);
     }
 
-    /**
-     * 获取会话所在的房间列表
-     *
-     * @param string $sid 会话ID
-     * @return array
-     */
     public function getSessionRooms(string $sid): array
     {
         return array_keys($this->sessionRooms[$sid] ?? []);
     }
 
-    /**
-     * 检查会话是否在指定房间中
-     *
-     * @param string $sid 会话ID
-     * @param string $room 房间名
-     * @return bool
-     */
     public function isInRoom(string $sid, string $room): bool
     {
         return isset($this->sessionRooms[$sid][$room]);
     }
 
-    /**
-     * 检查房间是否存在
-     *
-     * @param string $room 房间名
-     * @return bool
-     */
     public function roomExists(string $room): bool
     {
         return isset($this->rooms[$room]);
     }
 
-    /**
-     * 获取所有房间列表
-     *
-     * @return array
-     */
     public function getAllRooms(): array
     {
         return array_keys($this->rooms);
     }
 
-    /**
-     * 清空所有房间数据
-     *
-     * @return void
-     */
     public function clearAll(): void
     {
         $this->rooms = [];
         $this->sessionRooms = [];
     }
 
-    /**
-     * 移除会话的所有房间
-     *
-     * @param string $sid 会话ID
-     * @return void
-     */
     public function removeSession(string $sid): void
     {
         $this->leaveAllRooms($sid);
     }
 
-    /**
-     * 获取房间数量
-     *
-     * @return int
-     */
     public function getRoomCount(): int
     {
         return count($this->rooms);
     }
 
-    /**
-     * 获取会话数量
-     *
-     * @return int
-     */
     public function getSessionCount(): int
     {
         return count($this->sessionRooms);
     }
 
-    /**
-     * 将会话加入多个房间
-     *
-     * @param string $sid 会话ID
-     * @param array $rooms 房间列表
-     * @return bool
-     */
     public function joinRooms(string $sid, array $rooms): bool
     {
         foreach ($rooms as $room) {
@@ -300,13 +151,6 @@ final class RoomManager
         return true;
     }
 
-    /**
-     * 将会话离开多个房间
-     *
-     * @param string $sid 会话ID
-     * @param array $rooms 房间列表
-     * @return bool
-     */
     public function leaveRooms(string $sid, array $rooms): bool
     {
         foreach ($rooms as $room) {

@@ -18,6 +18,8 @@ final class ClusterAdapter implements AdapterInterface
     private int $maxBatchSize = 50;
     private float $batchInterval = 0.1;
 
+    private const VALID_PACKET_TYPES = [0, 1, 2, 3, 4, 5, 6];
+
     public function __construct(array $config = [])
     {
         $this->config = array_merge([
@@ -57,40 +59,17 @@ final class ClusterAdapter implements AdapterInterface
         try {
             $channelClientClass::connect($this->config['channel_ip'], $this->config['channel_port']);
         } catch (\Exception $e) {
-            throw new \RuntimeException("Failed to initialize channel client", 0, $e);
+            throw new \RuntimeException('Failed to initialize channel client', 0, $e);
         }
 
-        $channelClientClass::on($this->prefix . 'broadcast', function($packet) {
-            $this->handleBroadcast($packet);
-        });
-
-        $channelClientClass::on($this->prefix . 'room', function($data) {
-            $this->handleRoomMessage($data);
-        });
-
-        $channelClientClass::on($this->prefix . 'member', function($data) {
-            $this->handleMemberChange($data);
-        });
-
-        $channelClientClass::on($this->prefix . 'send', function($data) {
-            $this->handleSendMessage($data);
-        });
-
-        $channelClientClass::on($this->prefix . 'session_register', function($data) {
-            $this->handleSessionRegister($data);
-        });
-
-        $channelClientClass::on($this->prefix . 'session_query', function($data) {
-            $this->handleSessionQuery($data);
-        });
-
-        $channelClientClass::on($this->prefix . 'session_response', function($data) {
-            $this->handleSessionResponse($data);
-        });
-
-        $channelClientClass::on($this->prefix . 'session_probe', function($data) {
-            $this->handleSessionProbe($data);
-        });
+        $channelClientClass::on($this->prefix . 'broadcast', fn(array $packet) => $this->handleBroadcast($packet));
+        $channelClientClass::on($this->prefix . 'room', fn(array $data) => $this->handleRoomMessage($data));
+        $channelClientClass::on($this->prefix . 'member', fn(array $data) => $this->handleMemberChange($data));
+        $channelClientClass::on($this->prefix . 'send', fn(array $data) => $this->handleSendMessage($data));
+        $channelClientClass::on($this->prefix . 'session_register', fn(array $data) => $this->handleSessionRegister($data));
+        $channelClientClass::on($this->prefix . 'session_query', fn(array $data) => $this->handleSessionQuery($data));
+        $channelClientClass::on($this->prefix . 'session_response', fn(array $data) => $this->handleSessionResponse($data));
+        $channelClientClass::on($this->prefix . 'session_probe', fn(array $data) => $this->handleSessionProbe($data));
 
         $this->startSessionMappingHeartbeat();
         $this->startSessionCleanupTimer();
@@ -99,7 +78,7 @@ final class ClusterAdapter implements AdapterInterface
 
     private function startHeartbeat(): void
     {
-        \Workerman\Timer::add($this->config['heartbeat'], function() {
+        \Workerman\Timer::add($this->config['heartbeat'], function(): void {
             try {
                 $this->publishBatch($this->prefix . 'heartbeat', [
                     'pid' => getmypid(),
@@ -121,14 +100,12 @@ final class ClusterAdapter implements AdapterInterface
             return;
         }
 
-        $data = [
+        $this->publishBatch($this->prefix . 'room', [
             'room' => $room,
             'packet' => $packet,
             'sender' => getmypid(),
             'timestamp' => microtime(true)
-        ];
-
-        $this->publishBatch($this->prefix . 'room', $data);
+        ]);
     }
 
     public function broadcast(array $packet): void
@@ -141,32 +118,16 @@ final class ClusterAdapter implements AdapterInterface
             return;
         }
 
-        $data = [
+        $this->publishBatch($this->prefix . 'broadcast', [
             'packet' => $packet,
             'sender' => $this->processId,
             'timestamp' => microtime(true)
-        ];
-
-        $this->publishBatch($this->prefix . 'broadcast', $data);
+        ]);
     }
 
     public function join(string $sid, string $room): void
     {
-        if (!isset($this->rooms[$room])) {
-            $this->rooms[$room] = [];
-        }
-
-        if (!in_array($sid, $this->rooms[$room])) {
-            $this->rooms[$room][] = $sid;
-        }
-
-        if (!isset($this->sids[$sid])) {
-            $this->sids[$sid] = [];
-        }
-
-        if (!in_array($room, $this->sids[$sid])) {
-            $this->sids[$sid][] = $room;
-        }
+        $this->addRoomMember($sid, $room);
 
         $this->publishBatch($this->prefix . 'member', [
             'action' => 'add',
@@ -177,10 +138,42 @@ final class ClusterAdapter implements AdapterInterface
         ]);
     }
 
+    private function addRoomMember(string $sid, string $room): void
+    {
+        if (!isset($this->rooms[$room])) {
+            $this->rooms[$room] = [];
+        }
+
+        if (!in_array($sid, $this->rooms[$room], true)) {
+            $this->rooms[$room][] = $sid;
+        }
+
+        if (!isset($this->sids[$sid])) {
+            $this->sids[$sid] = [];
+        }
+
+        if (!in_array($room, $this->sids[$sid], true)) {
+            $this->sids[$sid][] = $room;
+        }
+    }
+
     public function leave(string $sid, string $room): void
     {
+        $this->removeRoomMember($sid, $room);
+
+        $this->publishBatch($this->prefix . 'member', [
+            'action' => 'del',
+            'sid' => $sid,
+            'room' => $room,
+            'process_id' => $this->processId,
+            'timestamp' => microtime(true)
+        ]);
+    }
+
+    private function removeRoomMember(string $sid, string $room): void
+    {
         if (isset($this->rooms[$room])) {
-            $index = array_search($sid, $this->rooms[$room]);
+            $index = array_search($sid, $this->rooms[$room], true);
             if ($index !== false) {
                 array_splice($this->rooms[$room], $index, 1);
             }
@@ -191,7 +184,7 @@ final class ClusterAdapter implements AdapterInterface
         }
 
         if (isset($this->sids[$sid])) {
-            $index = array_search($room, $this->sids[$sid]);
+            $index = array_search($room, $this->sids[$sid], true);
             if ($index !== false) {
                 array_splice($this->sids[$sid], $index, 1);
             }
@@ -200,14 +193,6 @@ final class ClusterAdapter implements AdapterInterface
                 unset($this->sids[$sid]);
             }
         }
-
-        $this->publishBatch($this->prefix . 'member', [
-            'action' => 'del',
-            'sid' => $sid,
-            'room' => $room,
-            'process_id' => $this->processId,
-            'timestamp' => microtime(true)
-        ]);
     }
 
     public function remove(string $sid): void
@@ -239,11 +224,12 @@ final class ClusterAdapter implements AdapterInterface
         }
 
         $sessionClass = '\PhpSocketIO\Session';
-        if (class_exists($sessionClass)) {
-            $activeSessions = $sessionClass::all();
-            foreach ($activeSessions as $sid => $session) {
-                $sessionClass::sendToSession($sid, $packet);
-            }
+        if (!class_exists($sessionClass)) {
+            return;
+        }
+
+        foreach ($sessionClass::all() as $sid => $session) {
+            $sessionClass::sendToSession($sid, $packet);
         }
     }
 
@@ -260,13 +246,17 @@ final class ClusterAdapter implements AdapterInterface
             return;
         }
 
-        if (isset($this->rooms[$room]) && !empty($this->rooms[$room])) {
-            $sessionClass = '\PhpSocketIO\Session';
-            if (class_exists($sessionClass)) {
-                foreach ($this->rooms[$room] as $sid) {
-                    $sessionClass::sendToSession($sid, $packet);
-                }
-            }
+        if (!isset($this->rooms[$room]) || empty($this->rooms[$room])) {
+            return;
+        }
+
+        $sessionClass = '\PhpSocketIO\Session';
+        if (!class_exists($sessionClass)) {
+            return;
+        }
+
+        foreach ($this->rooms[$room] as $sid) {
+            $sessionClass::sendToSession($sid, $packet);
         }
     }
 
@@ -276,49 +266,21 @@ final class ClusterAdapter implements AdapterInterface
             return;
         }
 
-        $action = $data['action'];
-        $sid = $data['sid'];
-        $room = $data['room'];
-
-        match ($action) {
-            'add' => $this->handleMemberAdd($sid, $room),
-            'del' => $this->handleMemberDel($sid, $room),
+        match ($data['action']) {
+            'add' => $this->handleMemberAdd($data['sid'], $data['room']),
+            'del' => $this->handleMemberDel($data['sid'], $data['room']),
             default => null
         };
     }
 
     private function handleMemberAdd(string $sid, string $room): void
     {
-        if (!isset($this->rooms[$room])) {
-            $this->rooms[$room] = [];
-        }
-        if (!in_array($sid, $this->rooms[$room])) {
-            $this->rooms[$room][] = $sid;
-        }
-
-        if (!isset($this->sids[$sid])) {
-            $this->sids[$sid] = [];
-        }
-        if (!in_array($room, $this->sids[$sid])) {
-            $this->sids[$sid][] = $room;
-        }
+        $this->addRoomMember($sid, $room);
     }
 
     private function handleMemberDel(string $sid, string $room): void
     {
-        if (isset($this->rooms[$room])) {
-            $index = array_search($sid, $this->rooms[$room]);
-            if ($index !== false) {
-                array_splice($this->rooms[$room], $index, 1);
-            }
-        }
-
-        if (isset($this->sids[$sid])) {
-            $index = array_search($room, $this->sids[$sid]);
-            if ($index !== false) {
-                array_splice($this->sids[$sid], $index, 1);
-            }
-        }
+        $this->removeRoomMember($sid, $room);
     }
 
     public function emit(string $sid, array $packet): void
@@ -339,9 +301,9 @@ final class ClusterAdapter implements AdapterInterface
     private function getSessionProcess(string $sid): int
     {
         if (isset($this->sessionProcessMap[$sid])) {
-            return is_array($this->sessionProcessMap[$sid]) ?
-                $this->sessionProcessMap[$sid]['processId'] :
-                $this->sessionProcessMap[$sid];
+            return is_array($this->sessionProcessMap[$sid])
+                ? $this->sessionProcessMap[$sid]['processId']
+                : $this->sessionProcessMap[$sid];
         }
 
         if ($this->isSessionLocal($sid)) {
@@ -355,12 +317,7 @@ final class ClusterAdapter implements AdapterInterface
     private function isSessionLocal(string $sid): bool
     {
         $sessionClass = '\PhpSocketIO\Session';
-        if (!class_exists($sessionClass)) {
-            return false;
-        }
-
-        $session = $sessionClass::get($sid);
-        return $session !== null;
+        return class_exists($sessionClass) && $sessionClass::get($sid) !== null;
     }
 
     private function discoverSessionProcess(string $sid): int
@@ -382,38 +339,36 @@ final class ClusterAdapter implements AdapterInterface
 
         if ($this->isSessionAvailableAnywhere($sid)) {
             throw new \RuntimeException(
-                "Socket.IO v4 Session routing failed: Session {$sid} " .
-                "exists in cluster but could not be routed after 0.9s timeout. " .
-                "This may be due to network latency or high cluster load."
+                "Socket.IO v4 Session routing failed: Session {$sid} "
+                . "exists in cluster but could not be routed after 0.9s timeout. "
+                . "This may be due to network latency or high cluster load."
             );
         }
 
         throw new \RuntimeException(
-            "Socket.IO v4 Session not found: Session {$sid} " .
-            "does not exist in the cluster (checked all nodes). " .
-            "The session may have been disconnected or expired."
+            "Socket.IO v4 Session not found: Session {$sid} "
+            . "does not exist in the cluster (checked all nodes). "
+            . "The session may have been disconnected or expired."
         );
     }
 
     private function performSessionQuery(string $sid, string $queryId, float $timeout): ?int
     {
-        $queryData = [
+        $this->sessionProcessMap[$sid] = null;
+        $this->publishBatch($this->prefix . 'session_query', [
             'sid' => $sid,
             'query_id' => $queryId,
             'requester' => $this->processId,
             'timestamp' => microtime(true)
-        ];
-
-        $this->sessionProcessMap[$sid] = null;
-        $this->publishBatch($this->prefix . 'session_query', $queryData, true);
+        ], true);
 
         $startTime = microtime(true);
         while (microtime(true) - $startTime < $timeout) {
             if (isset($this->sessionProcessMap[$sid]) && $this->sessionProcessMap[$sid] !== null) {
                 $sessionInfo = $this->sessionProcessMap[$sid];
-                $this->sessionProcessMap[$sid] = is_array($sessionInfo) ?
-                    $sessionInfo['processId'] : $sessionInfo;
-                return is_array($sessionInfo) ? $sessionInfo['processId'] : $sessionInfo;
+                $result = is_array($sessionInfo) ? $sessionInfo['processId'] : $sessionInfo;
+                $this->sessionProcessMap[$sid] = $result;
+                return $result;
             }
             usleep(10000);
         }
@@ -427,24 +382,18 @@ final class ClusterAdapter implements AdapterInterface
 
     private function isSessionAvailableAnywhere(string $sid): bool
     {
-        if ($this->isSessionLocal($sid)) {
-            return true;
-        }
-
-        return $this->probeSessionExistence($sid);
+        return $this->isSessionLocal($sid) || $this->probeSessionExistence($sid);
     }
 
     private function probeSessionExistence(string $sid): bool
     {
         $probeId = uniqid('probe_', true);
-        $probeData = [
+        $this->publishBatch($this->prefix . 'session_probe', [
             'sid' => $sid,
             'probe_id' => $probeId,
             'requester' => $this->processId,
             'timestamp' => microtime(true)
-        ];
-
-        $this->publishBatch($this->prefix . 'session_probe', $probeData, true);
+        ], true);
 
         $startTime = microtime(true);
         while (microtime(true) - $startTime < 0.1) {
@@ -465,14 +414,14 @@ final class ClusterAdapter implements AdapterInterface
         }
 
         $session = $sessionClass::get($sid);
-        if ($session) {
-            if (isset($packet['type'])) {
-                $sessionClass::sendToSession($sid, $packet);
-            } else {
-                if (isset($packet['data'])) {
-                    $session->send($packet['data']);
-                }
-            }
+        if (!$session) {
+            return;
+        }
+
+        if (isset($packet['type'])) {
+            $sessionClass::sendToSession($sid, $packet);
+        } elseif (isset($packet['data'])) {
+            $session->send($packet['data']);
         }
     }
 
@@ -482,15 +431,13 @@ final class ClusterAdapter implements AdapterInterface
             return;
         }
 
-        $data = [
+        $this->publishBatch($this->prefix . 'send', [
             'target_sid' => $sid,
             'packet' => $packet,
             'sender' => $this->processId,
             'target_process' => $targetProcess,
             'timestamp' => microtime(true)
-        ];
-
-        $this->publishBatch($this->prefix . 'send', $data);
+        ]);
     }
 
     private function validateSocketIOV4Packet(array $packet): bool
@@ -499,49 +446,20 @@ final class ClusterAdapter implements AdapterInterface
             return false;
         }
 
-        if ($packet['type'] === 2) {
-            if (!isset($packet['event']) || !is_string($packet['event'])) {
-                return false;
-            }
+        $type = $packet['type'];
 
-            if (isset($packet['data']) && !is_array($packet['data'])) {
-                return false;
-            }
-        }
-
-        if ($packet['type'] === 3) {
-            if (!isset($packet['id']) || !is_numeric($packet['id'])) {
-                return false;
-            }
-        }
-
-        if ($packet['type'] === 0 || $packet['type'] === 1 || $packet['type'] === 6) {
-            return true;
-        }
-
-        if ($packet['type'] === 4) {
-            if (!isset($packet['data']) || !is_array($packet['data'])) {
-                return false;
-            }
-        }
-
-        if ($packet['type'] === 5) {
-            if (!isset($packet['event']) || !is_string($packet['event'])) {
-                return false;
-            }
-        }
-
-        if ($packet['type'] === 6) {
-            if (!isset($packet['id']) || !is_numeric($packet['id'])) {
-                return false;
-            }
-        }
-
-        if (!in_array($packet['type'], [0, 1, 2, 3, 4, 5, 6])) {
+        if (!in_array($type, self::VALID_PACKET_TYPES, true)) {
             return false;
         }
 
-        return true;
+        return match ($type) {
+            2, 5 => isset($packet['event']) && is_string($packet['event'])
+                && (!isset($packet['data']) || is_array($packet['data'])),
+            3, 6 => isset($packet['id']) && is_numeric($packet['id']),
+            4 => isset($packet['data']) && is_array($packet['data']),
+            0, 1 => true,
+            default => false,
+        };
     }
 
     private function handleSendMessage(array $data): void
@@ -550,10 +468,7 @@ final class ClusterAdapter implements AdapterInterface
             return;
         }
 
-        $sid = $data['target_sid'];
-        $packet = $data['packet'];
-
-        $this->handleDirectSend($sid, $packet);
+        $this->handleDirectSend($data['target_sid'], $data['packet']);
     }
 
     public function register(string $sid): void
@@ -570,9 +485,7 @@ final class ClusterAdapter implements AdapterInterface
 
     public function unregister(string $sid): void
     {
-        if (isset($this->sessionProcessMap[$sid])) {
-            unset($this->sessionProcessMap[$sid]);
-        }
+        unset($this->sessionProcessMap[$sid]);
     }
 
     private function handleSessionRegister(array $data): void
@@ -590,20 +503,18 @@ final class ClusterAdapter implements AdapterInterface
         $sid = $data['sid'];
         $requester = $data['requester'];
 
-        if ($requester === $this->processId) {
+        if ($requester === $this->processId || !$this->isSessionLocal($sid)) {
             return;
         }
 
-        if ($this->isSessionLocal($sid)) {
-            $channelClientClass = $this->getChannelClientClass();
-            $channelClientClass::publish($this->prefix . 'session_response', [
-                'sid' => $sid,
-                'query_id' => $data['query_id'],
-                'responder' => $this->processId,
-                'process_id' => $this->processId,
-                'timestamp' => microtime(true)
-            ]);
-        }
+        $channelClientClass = $this->getChannelClientClass();
+        $channelClientClass::publish($this->prefix . 'session_response', [
+            'sid' => $sid,
+            'query_id' => $data['query_id'],
+            'responder' => $this->processId,
+            'process_id' => $this->processId,
+            'timestamp' => microtime(true)
+        ]);
     }
 
     private function handleSessionResponse(array $data): void
@@ -616,7 +527,7 @@ final class ClusterAdapter implements AdapterInterface
             return;
         }
 
-        if (!isset($this->sessionProcessMap[$sid]) || $this->sessionProcessMap[$sid] !== null) {
+        if (isset($this->sessionProcessMap[$sid]) && $this->sessionProcessMap[$sid] !== null) {
             return;
         }
 
@@ -633,24 +544,22 @@ final class ClusterAdapter implements AdapterInterface
         $sid = $data['sid'];
         $requester = $data['requester'];
 
-        if ($requester === $this->processId) {
+        if ($requester === $this->processId || !$this->isSessionLocal($sid)) {
             return;
         }
 
-        if ($this->isSessionLocal($sid)) {
-            $channelClientClass = $this->getChannelClientClass();
-            $channelClientClass::publish($this->prefix . 'session_response', [
-                'sid' => $sid,
-                'query_id' => $data['probe_id'],
-                'process_id' => $this->processId,
-                'timestamp' => microtime(true)
-            ]);
-        }
+        $channelClientClass = $this->getChannelClientClass();
+        $channelClientClass::publish($this->prefix . 'session_response', [
+            'sid' => $sid,
+            'query_id' => $data['probe_id'],
+            'process_id' => $this->processId,
+            'timestamp' => microtime(true)
+        ]);
     }
 
     private function startSessionMappingHeartbeat(): void
     {
-        \Workerman\Timer::add(30, function() {
+        \Workerman\Timer::add(30, function(): void {
             if (empty($this->sessionProcessMap)) {
                 return;
             }
@@ -666,30 +575,27 @@ final class ClusterAdapter implements AdapterInterface
 
     private function startSessionCleanupTimer(): void
     {
-        \Workerman\Timer::add(60, function() {
+        \Workerman\Timer::add(60, function(): void {
             $currentTime = microtime(true);
             $expirationTime = $currentTime - 120;
             $cleanupCount = 0;
+            $sessionClass = '\PhpSocketIO\Session';
+            $sessionClassExists = class_exists($sessionClass);
 
             foreach ($this->sessionProcessMap as $sid => $sessionInfo) {
+                $shouldRemove = false;
+
                 if (is_array($sessionInfo) && isset($sessionInfo['responseTime'])) {
-                    if ($sessionInfo['responseTime'] < $expirationTime) {
-                        unset($this->sessionProcessMap[$sid]);
-                        $cleanupCount++;
-                    }
+                    $shouldRemove = $sessionInfo['responseTime'] < $expirationTime;
                 } elseif ($sessionInfo === null) {
+                    $shouldRemove = true;
+                } elseif ($sessionClassExists && !$sessionClass::get($sid)) {
+                    $shouldRemove = true;
+                }
+
+                if ($shouldRemove) {
                     unset($this->sessionProcessMap[$sid]);
                     $cleanupCount++;
-                }
-            }
-
-            $sessionClass = '\PhpSocketIO\Session';
-            if (class_exists($sessionClass)) {
-                foreach (array_keys($this->sessionProcessMap) as $sid) {
-                    if (!$sessionClass::get($sid)) {
-                        unset($this->sessionProcessMap[$sid]);
-                        $cleanupCount++;
-                    }
                 }
             }
         });
@@ -715,7 +621,10 @@ final class ClusterAdapter implements AdapterInterface
     private function publishBatch(string $channel, array $data, bool $urgent = false): void
     {
         $channelClientClass = $this->getChannelClientClass();
-        if ($urgent || strpos($channel, 'heartbeat') !== false || strpos($channel, 'session_') !== false) {
+
+        $isUrgent = $urgent || str_contains($channel, 'heartbeat') || str_starts_with($channel, $this->prefix . 'session_');
+
+        if ($isUrgent) {
             try {
                 $channelClientClass::publish($channel, $data);
                 return;
@@ -723,7 +632,7 @@ final class ClusterAdapter implements AdapterInterface
                 $this->initChannelClient();
                 try {
                     $channelClientClass::publish($channel, $data);
-                } catch (\Exception $e2) {
+                } catch (\Exception) {
                 }
                 return;
             }
@@ -737,7 +646,7 @@ final class ClusterAdapter implements AdapterInterface
 
         if (count($this->messageQueue) >= $this->maxBatchSize) {
             $this->flushMessageQueue();
-        } else if (!$this->batchTimerStarted) {
+        } elseif (!$this->batchTimerStarted) {
             $this->startBatchTimer();
         }
     }
@@ -749,7 +658,7 @@ final class ClusterAdapter implements AdapterInterface
         }
 
         $this->batchTimerStarted = true;
-        \Workerman\Timer::add($this->batchInterval, function($timerId) {
+        \Workerman\Timer::add($this->batchInterval, function($timerId): void {
             if (empty($this->messageQueue)) {
                 $this->batchTimerStarted = false;
                 \Workerman\Timer::del($timerId);

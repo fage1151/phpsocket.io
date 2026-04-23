@@ -74,7 +74,7 @@ final class RedisAdapter implements AdapterInterface
             } catch (\Exception $e) {
                 $attempt++;
                 if ($attempt > $maxAttempts) {
-                    throw new \RuntimeException("Failed to connect to Redis", 0, $e);
+                    throw new \RuntimeException('Failed to connect to Redis', 0, $e);
                 }
 
                 usleep($this->reconnectInterval * 1000);
@@ -122,15 +122,13 @@ final class RedisAdapter implements AdapterInterface
             throw new \RuntimeException('Adapter not initialized');
         }
 
-        $data = [
-            'packet' => $packet,
-            'sender' => $this->processId,
-            'timestamp' => microtime(true)
-        ];
-
         $channel = $this->prefix . 'broadcast';
-        $this->executeRedisCommand(function($redis) use ($channel, $data) {
-            $redis->publish($channel, json_encode($data));
+        $this->executeRedisCommand(function($redis) use ($channel, $packet): void {
+            $redis->publish($channel, json_encode([
+                'packet' => $packet,
+                'sender' => $this->processId,
+                'timestamp' => microtime(true)
+            ]));
         });
 
         $this->sendToLocalAll($packet);
@@ -142,16 +140,14 @@ final class RedisAdapter implements AdapterInterface
             throw new \RuntimeException('Adapter not initialized');
         }
 
-        $data = [
-            'room' => $room,
-            'packet' => $packet,
-            'sender' => $this->processId,
-            'timestamp' => microtime(true)
-        ];
-
         $channel = $this->prefix . 'room';
-        $this->executeRedisCommand(function($redis) use ($channel, $data) {
-            $redis->publish($channel, json_encode($data));
+        $this->executeRedisCommand(function($redis) use ($channel, $room, $packet): void {
+            $redis->publish($channel, json_encode([
+                'room' => $room,
+                'packet' => $packet,
+                'sender' => $this->processId,
+                'timestamp' => microtime(true)
+            ]));
         });
 
         $this->sendToLocalRoom($room, $packet);
@@ -166,27 +162,48 @@ final class RedisAdapter implements AdapterInterface
         if (isset($this->sids[$sid])) {
             $this->sendToLocalSession($sid, $packet);
         } else {
-            $data = [
-                'sid' => $sid,
-                'packet' => $packet,
-                'sender' => $this->processId,
-                'timestamp' => microtime(true)
-            ];
-
             $channel = $this->prefix . 'send';
-            $this->executeRedisCommand(function($redis) use ($channel, $data) {
-                $redis->publish($channel, json_encode($data));
+            $this->executeRedisCommand(function($redis) use ($channel, $sid, $packet): void {
+                $redis->publish($channel, json_encode([
+                    'sid' => $sid,
+                    'packet' => $packet,
+                    'sender' => $this->processId,
+                    'timestamp' => microtime(true)
+                ]));
             });
         }
     }
 
     public function join(string $sid, string $room): void
     {
+        $this->addRoomMember($sid, $room);
+
+        $roomKey = $this->prefix . 'room:' . $room;
+        $sidKey = $this->prefix . 'sid:' . $sid;
+        $this->executeRedisCommand(function($redis) use ($roomKey, $sidKey, $sid, $room): void {
+            $redis->sAdd($roomKey, $sid);
+            $redis->sAdd($sidKey, $room);
+        });
+
+        $channel = $this->prefix . 'member';
+        $this->executeRedisCommand(function($redis) use ($channel, $sid, $room): void {
+            $redis->publish($channel, json_encode([
+                'action' => 'add',
+                'sid' => $sid,
+                'room' => $room,
+                'process_id' => $this->processId,
+                'timestamp' => microtime(true)
+            ]));
+        });
+    }
+
+    private function addRoomMember(string $sid, string $room): void
+    {
         if (!isset($this->rooms[$room])) {
             $this->rooms[$room] = [];
         }
 
-        if (!in_array($sid, $this->rooms[$room])) {
+        if (!in_array($sid, $this->rooms[$room], true)) {
             $this->rooms[$room][] = $sid;
         }
 
@@ -194,35 +211,38 @@ final class RedisAdapter implements AdapterInterface
             $this->sids[$sid] = [];
         }
 
-        if (!in_array($room, $this->sids[$sid])) {
+        if (!in_array($room, $this->sids[$sid], true)) {
             $this->sids[$sid][] = $room;
         }
-
-        $roomKey = $this->prefix . 'room:' . $room;
-        $sidKey = $this->prefix . 'sid:' . $sid;
-        $this->executeRedisCommand(function($redis) use ($roomKey, $sidKey, $sid, $room) {
-            $redis->sAdd($roomKey, $sid);
-            $redis->sAdd($sidKey, $room);
-        });
-
-        $data = [
-            'action' => 'add',
-            'sid' => $sid,
-            'room' => $room,
-            'process_id' => $this->processId,
-            'timestamp' => microtime(true)
-        ];
-
-        $channel = $this->prefix . 'member';
-        $this->executeRedisCommand(function($redis) use ($channel, $data) {
-            $redis->publish($channel, json_encode($data));
-        });
     }
 
     public function leave(string $sid, string $room): void
     {
+        $this->removeRoomMember($sid, $room);
+
+        $roomKey = $this->prefix . 'room:' . $room;
+        $sidKey = $this->prefix . 'sid:' . $sid;
+        $this->executeRedisCommand(function($redis) use ($roomKey, $sidKey, $sid, $room): void {
+            $redis->sRem($roomKey, $sid);
+            $redis->sRem($sidKey, $room);
+        });
+
+        $channel = $this->prefix . 'member';
+        $this->executeRedisCommand(function($redis) use ($channel, $sid, $room): void {
+            $redis->publish($channel, json_encode([
+                'action' => 'del',
+                'sid' => $sid,
+                'room' => $room,
+                'process_id' => $this->processId,
+                'timestamp' => microtime(true)
+            ]));
+        });
+    }
+
+    private function removeRoomMember(string $sid, string $room): void
+    {
         if (isset($this->rooms[$room])) {
-            $index = array_search($sid, $this->rooms[$room]);
+            $index = array_search($sid, $this->rooms[$room], true);
             if ($index !== false) {
                 array_splice($this->rooms[$room], $index, 1);
             }
@@ -233,7 +253,7 @@ final class RedisAdapter implements AdapterInterface
         }
 
         if (isset($this->sids[$sid])) {
-            $index = array_search($room, $this->sids[$sid]);
+            $index = array_search($room, $this->sids[$sid], true);
             if ($index !== false) {
                 array_splice($this->sids[$sid], $index, 1);
             }
@@ -242,26 +262,6 @@ final class RedisAdapter implements AdapterInterface
                 unset($this->sids[$sid]);
             }
         }
-
-        $roomKey = $this->prefix . 'room:' . $room;
-        $sidKey = $this->prefix . 'sid:' . $sid;
-        $this->executeRedisCommand(function($redis) use ($roomKey, $sidKey, $sid, $room) {
-            $redis->sRem($roomKey, $sid);
-            $redis->sRem($sidKey, $room);
-        });
-
-        $data = [
-            'action' => 'del',
-            'sid' => $sid,
-            'room' => $room,
-            'process_id' => $this->processId,
-            'timestamp' => microtime(true)
-        ];
-
-        $channel = $this->prefix . 'member';
-        $this->executeRedisCommand(function($redis) use ($channel, $data) {
-            $redis->publish($channel, json_encode($data));
-        });
     }
 
     public function remove(string $sid): void
@@ -275,9 +275,7 @@ final class RedisAdapter implements AdapterInterface
         }
 
         $sidKey = $this->prefix . 'sid:' . $sid;
-        $this->executeRedisCommand(function($redis) use ($sidKey) {
-            $redis->del($sidKey);
-        });
+        $this->executeRedisCommand(fn($redis) => $redis->del($sidKey));
     }
 
     public function clients(string $room): array
@@ -288,7 +286,7 @@ final class RedisAdapter implements AdapterInterface
     public function register(string $sid): void
     {
         $sessionKey = $this->prefix . 'session:' . $sid;
-        $this->executeRedisCommand(function($redis) use ($sessionKey, $sid) {
+        $this->executeRedisCommand(function($redis) use ($sessionKey): void {
             $redis->set($sessionKey, $this->processId);
             $redis->expire($sessionKey, 3600);
         });
@@ -297,9 +295,7 @@ final class RedisAdapter implements AdapterInterface
     public function unregister(string $sid): void
     {
         $sessionKey = $this->prefix . 'session:' . $sid;
-        $this->executeRedisCommand(function($redis) use ($sessionKey) {
-            $redis->del($sessionKey);
-        });
+        $this->executeRedisCommand(fn($redis) => $redis->del($sessionKey));
     }
 
     public function close(): void
@@ -312,24 +308,29 @@ final class RedisAdapter implements AdapterInterface
 
     private function sendToLocalRoom(string $room, array $packet): void
     {
-        if (isset($this->rooms[$room]) && !empty($this->rooms[$room])) {
-            $sessionClass = '\PhpSocketIO\Session';
-            if (class_exists($sessionClass)) {
-                foreach ($this->rooms[$room] as $sid) {
-                    $sessionClass::sendToSession($sid, $packet);
-                }
-            }
+        if (!isset($this->rooms[$room]) || empty($this->rooms[$room])) {
+            return;
+        }
+
+        $sessionClass = '\PhpSocketIO\Session';
+        if (!class_exists($sessionClass)) {
+            return;
+        }
+
+        foreach ($this->rooms[$room] as $sid) {
+            $sessionClass::sendToSession($sid, $packet);
         }
     }
 
     private function sendToLocalAll(array $packet): void
     {
         $sessionClass = '\PhpSocketIO\Session';
-        if (class_exists($sessionClass)) {
-            $activeSessions = $sessionClass::all();
-            foreach ($activeSessions as $sid => $session) {
-                $sessionClass::sendToSession($sid, $packet);
-            }
+        if (!class_exists($sessionClass)) {
+            return;
+        }
+
+        foreach ($sessionClass::all() as $sid => $session) {
+            $sessionClass::sendToSession($sid, $packet);
         }
     }
 
@@ -365,7 +366,7 @@ final class RedisAdapter implements AdapterInterface
         $processId = $this->processId;
 
         foreach ($channels as $channel) {
-            $this->subscriber->subscribe($channel, function($channel, $message) use ($adapter, $processId) {
+            $this->subscriber->subscribe($channel, function($channel, $message) use ($adapter, $processId): void {
                 $adapter->handleRedisMessage($channel, $message, $processId);
             });
         }
@@ -383,15 +384,14 @@ final class RedisAdapter implements AdapterInterface
                 return;
             }
 
-            $prefix = $this->prefix;
             match ($channel) {
-                $prefix . 'broadcast' => $this->handleBroadcastMessage($data),
-                $prefix . 'room' => $this->handleRoomMessage($data),
-                $prefix . 'send' => $this->handleSendMessage($data),
-                $prefix . 'member' => $this->handleMemberMessage($data),
+                $this->prefix . 'broadcast' => $this->handleBroadcastMessage($data),
+                $this->prefix . 'room' => $this->handleRoomMessage($data),
+                $this->prefix . 'send' => $this->handleSendMessage($data),
+                $this->prefix . 'member' => $this->handleMemberMessage($data),
                 default => null
             };
-        } catch (\Exception $e) {
+        } catch (\Exception) {
         }
     }
 

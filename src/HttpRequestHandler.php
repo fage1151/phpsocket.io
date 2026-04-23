@@ -4,11 +4,19 @@ declare(strict_types=1);
 
 namespace PhpSocketIO;
 
+/**
+ * Socket.IO HTTP 请求处理器
+ * 处理 WebSocket 握手、轮询请求等
+ * @package PhpSocketIO
+ */
 final class HttpRequestHandler
 {
     private ServerManager $serverManager;
     private PollingHandler $pollingHandler;
     private EngineIOHandler $engineIoHandler;
+    
+    /** @var array<int, string> 有效的引擎IO数据包起始字符 */
+    private const VALID_PACKET_CHARS = ['0', '1', '2', '3', '4', '5', '6', 'b'];
 
     public function __construct(
         ServerManager $serverManager,
@@ -62,9 +70,9 @@ final class HttpRequestHandler
             return;
         }
 
-        $isBinary = $this->isBinaryFrame($data);
+        $isBinary = $this->isBinaryFrame((string)$data);
         if (!$isBinary) {
-            $this->processWebSocketData($session, $data);
+            $this->processWebSocketData($session, (string)$data);
         } else {
             $binaryData = is_string($data) ? $data : (string)$data;
             $packet = ['type' => 'binary', 'data' => base64_encode($binaryData)];
@@ -74,17 +82,7 @@ final class HttpRequestHandler
 
     private function isBinaryFrame(string $data): bool
     {
-        if (empty($data)) return false;
-
-        $first = $data[0];
-
-        if ($first === '0' || $first === '1' || $first === '2' ||
-            $first === '3' || $first === '4' || $first === '5' ||
-            $first === '6' || $first === 'b') {
-            return false;
-        }
-
-        return true;
+        return !empty($data) && !in_array($data[0], self::VALID_PACKET_CHARS, true);
     }
 
     private function processWebSocketData(Session $session, string $data): void
@@ -94,9 +92,9 @@ final class HttpRequestHandler
 
     private function isDirectWebSocketHandshake(mixed $req): bool
     {
-        return strpos($req->path(), '/socket.io/') !== false
+        return str_starts_with($req->path(), '/socket.io/')
             && $req->get('transport') === 'websocket'
-            && !($req->get('sid'));
+            && !$req->get('sid');
     }
 
     private function handleDirectWebSocketHandshake(\Workerman\Connection\TcpConnection $connection, mixed $req): void
@@ -114,7 +112,7 @@ final class HttpRequestHandler
                 $this->engineIoHandler->sendHandshake($connection, $session);
             }, [], false);
 
-        } catch (\Exception $e) {
+        } catch (\Exception) {
             $connection->close();
         }
     }
@@ -129,10 +127,7 @@ final class HttpRequestHandler
         );
         $connection->send($handshakeResponse, true);
 
-        if (empty($connection->websocketType)) {
-            $connection->websocketType = "\x81";
-        }
-
+        $connection->websocketType ??= "\x81";
         $connection->protocol = \Workerman\Protocols\Websocket::class;
         $connection->context->websocketHandshake = true;
         $connection->context->websocketDataBuffer = '';
@@ -145,13 +140,8 @@ final class HttpRequestHandler
     private function isWebSocketUpgradeRequest(mixed $req): bool
     {
         $headers = $req->header();
-        $isUpgrade = isset($headers['upgrade'])
+        return isset($headers['upgrade'], $headers['sec-websocket-key'], $headers['sec-websocket-version'])
             && strtolower($headers['upgrade']) === 'websocket';
-
-        $hasKey = isset($headers['sec-websocket-key']);
-        $hasVersion = isset($headers['sec-websocket-version']);
-
-        return $isUpgrade && $hasKey && $hasVersion;
     }
 
     private function handleUpgrade(\Workerman\Connection\TcpConnection $connection, mixed $req): void
@@ -191,15 +181,12 @@ final class HttpRequestHandler
     private function generateWebSocketHandshakeResponse(string $key): string
     {
         $newKey = base64_encode(sha1($key . "258EAFA5-E914-47DA-95CA-C5AB0DC85B11", true));
-        $handshakeMessage = "HTTP/1.1 101 Switching Protocol\r\n"
+        return "HTTP/1.1 101 Switching Protocol\r\n"
             . "Upgrade: websocket\r\n"
             . "Sec-WebSocket-Version: 13\r\n"
             . "Connection: Upgrade\r\n"
             . "Sec-WebSocket-Accept: " . $newKey . "\r\n"
-            . "Access-Control-Allow-Origin: *\r\n";
-        $handshakeMessage .= "\r\n";
-
-        return $handshakeMessage;
+            . "Access-Control-Allow-Origin: *\r\n\r\n";
     }
 
     public static function sendWsFrame(\Workerman\Connection\TcpConnection $connection, string $data, bool $isBinary = false): bool
@@ -209,15 +196,10 @@ final class HttpRequestHandler
         }
 
         try {
-            if ($isBinary) {
-                $connection->websocketType = "\x82";
-                $connection->send($data);
-            } else {
-                $connection->websocketType = "\x81";
-                $connection->send($data);
-            }
+            $connection->websocketType = $isBinary ? "\x82" : "\x81";
+            $connection->send($data);
             return true;
-        } catch (\Exception $e) {
+        } catch (\Exception) {
             return false;
         }
     }
@@ -227,7 +209,7 @@ final class HttpRequestHandler
         try {
             $status = $connection->getStatus();
             return $status !== null && $status !== 'closed' && $status !== 'closing';
-        } catch (\Exception $e) {
+        } catch (\Exception) {
             return false;
         }
     }
@@ -237,7 +219,6 @@ final class HttpRequestHandler
         if (isset($connection->sid)) {
             $sid = $connection->sid;
             $session = Session::get($sid);
-
             if ($session) {
                 Session::remove($sid);
             }

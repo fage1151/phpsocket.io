@@ -15,11 +15,12 @@ use Psr\Log\LoggerInterface;
  */
 class EventHandler
 {
-    private $namespaceHandlers = []; // 命名空间处理器
-    private $connectedSockets  = []; // 已连接的socket实例
-    private $middlewares       = []; // 中间件队列
-    private $ackCallbacks      = []; // ACK回调存储
-    private $server            = null; // Socket.IO服务器实例
+    private array $namespaceHandlers = []; // 命名空间处理器
+    private array $connectedSockets = []; // 已连接的socket实例
+    private array $middlewares = []; // 中间件队列
+    private array $ackCallbacks = []; // ACK回调存储
+    private array $ackCallbacksById = []; // ACK回调二级索引（按ackId）
+    private ?SocketIOServer $server = null; // Socket.IO服务器实例
     private ?LoggerInterface $logger = null; // PSR-3 日志记录器
 
     /**
@@ -39,40 +40,39 @@ class EventHandler
         $this->connectedSockets = [];
         $this->middlewares = [];
         $this->ackCallbacks = [];
+        $this->ackCallbacksById = [];
         $this->server = $options['server'] ?? null;
         
         // 初始化默认命名空间处理器
         $this->initDefaultNamespace();
     }
-
+    
     /**
      * 初始化根命名空间处理器
      */
-    private function initDefaultNamespace()
+    private function initDefaultNamespace(): void
     {
         // 根命名空间 '/' 的处理器
         $this->namespaceHandlers['/'] = [
-            'connect' => null,    // 连接回调
-            'disconnect' => null, // 断开连接回调
-            'events' => [],       // 事件处理器
-            'sockets' => []       // 连接的socket实例
+            'connect' => null,
+            'disconnect' => null,
+            'events' => [],
+            'sockets' => []
         ];
     }
     
     /**
      * 获取服务器实例（用于测试）
-     * @return mixed|null
      */
-    public function getServer()
+    public function getServer(): ?SocketIOServer
     {
         return $this->server;
     }
 
     /**
      * 注册中间件
-     * @param callable $middleware 中间件函数
      */
-    public function use(callable $middleware)
+    public function use(callable $middleware): void
     {
         $this->middlewares[] = $middleware;
     }
@@ -85,9 +85,12 @@ class EventHandler
         $index = 0;
         $middlewares = $this->middlewares;
         
-        $runner = fn() => $index >= count($middlewares) 
-            ? $next($socket, $packet) 
-            : $middlewares[$index++]($socket, $packet, $runner);
+        $runner = function() use (&$index, $middlewares, $socket, $packet, $next) {
+            if ($index >= count($middlewares)) {
+                return $next($socket, $packet);
+            }
+            return $middlewares[$index++]($socket, $packet, $this->runMiddlewares(...));
+        };
         
         return $runner();
     }
@@ -115,14 +118,14 @@ class EventHandler
      * 为事件处理器构建合适的调用参数（Socket.IO v4协议标准）
      * 严格遵循协议规范：42["event_name", "data1", "data2", ...] -> 处理器接收(data1, data2, ...)
      */
-    private static function buildHandlerArguments(callable $handler, array $socket, array $eventData, string $namespace): array
+    public static function buildHandlerArguments(callable $handler, array $socket, array $eventData, string $namespace): array
     {
         try {
             $reflection = new ReflectionFunction($handler);
             $paramCount = $reflection->getNumberOfParameters();
             
             // Socket.IO v4协议标准：事件参数展开传递
-            // 协议格式：42["event", "data1", "data2"] => 处理器接收 (data1, data2)
+            // 协议格式：42["event", "data1", "data2"] -> 处理器接收 (data1, data2)
             
             $callArgs = [];
             
@@ -172,7 +175,7 @@ class EventHandler
     /**
      * 检查是否为Socket实例类型
      */
-    private static function isSocketInstanceType(?string $typeName): bool
+    public static function isSocketInstanceType(?string $typeName): bool
     {
         if (!$typeName) return false;
         
@@ -187,7 +190,7 @@ class EventHandler
     /**
      * 为事件处理器创建合适的Socket实例
      */
-    private static function createSocketInstanceForHandler(array $socket, string $namespace) 
+    public static function createSocketInstanceForHandler(array $socket, string $namespace): mixed
     {
         // 尝试使用数组中的现有Socket实例
         if (isset($socket['socket']) && is_object($socket['socket'])) {
@@ -210,11 +213,8 @@ class EventHandler
 
     /**
      * 注册自定义事件处理器
-     * @param string $event 事件名称
-     * @param callable $callback 事件回调
-     * @param string $namespace 命名空间
      */
-    public function on($event, callable $callback, $namespace = '/')
+    public function on(string $event, callable $callback, string $namespace = '/'): void
     {
         if (!isset($this->namespaceHandlers[$namespace])) {
             $this->of($namespace);
@@ -225,11 +225,8 @@ class EventHandler
 
     /**
      * 触发连接事件
-     * @param array $socket socket实例
-     * @param string $namespace 命名空间
-     * @param mixed $socketIOServer SocketIO服务器实例
      */
-    public function triggerConnect(array $socket, $namespace = '/', $socketIOServer = null)
+    public function triggerConnect(array $socket, string $namespace = '/', ?SocketIOServer $socketIOServer = null): void
     {
         $socket['namespace'] = $namespace;
         $this->connectedSockets[$socket['id']] = $socket;
@@ -306,10 +303,8 @@ class EventHandler
 
     /**
      * 触发断开连接事件
-     * @param array $socket socket实例
-     * @param string $reason 断开原因
      */
-    public function triggerDisconnect(array $socket, $reason = 'client disconnect')
+    public function triggerDisconnect(array $socket, string $reason = 'client disconnect'): void
     {
         $namespace = $socket['namespace'] ?? '/';
         $socketId = $socket['id'] ?? '';
@@ -366,8 +361,6 @@ class EventHandler
 
     /**
      * 处理Socket.IO事件包
-     * @param array $packet 数据包
-     * @param array $socket socket实例
      */
     public function handlePacket(array $packet, array $socket): mixed
     {
@@ -395,10 +388,8 @@ class EventHandler
 
     /**
      * 处理连接请求
-     * @param array $packet 数据包
-     * @param array $socket socket实例
      */
-    private function handleConnect(array $packet, array $socket)
+    private function handleConnect(array $packet, array $socket): bool
     {
         $namespace = $packet['namespace'] ?? '/';
         $auth = $packet['auth'] ?? null;
@@ -423,10 +414,8 @@ class EventHandler
 
     /**
      * 处理断开连接
-     * @param array $packet 数据包
-     * @param array $socket socket实例
      */
-    private function handleDisconnect(array $packet, array $socket)
+    private function handleDisconnect(array $packet, array $socket): bool
     {
         $namespace = $packet['namespace'] ?? '/';
         $this->triggerDisconnect($socket, 'client disconnect');
@@ -476,10 +465,8 @@ class EventHandler
     /**
      * 处理ACK确认包（Socket.IO v4协议标准）
      * 严格遵循协议：ACK回调接收展开的参数，与EVENT参数格式完全一致
-     * @param array $packet 数据包
-     * @param array $socket socket实例
      */
-    private function handleAck(array $packet, array $socket)
+    private function handleAck(array $packet, array $socket): bool
     {
         $namespace = $packet['namespace'] ?? '/';
         $ackId = $packet['id'] ?? null;
@@ -518,14 +505,14 @@ class EventHandler
                 call_user_func_array($callback, $ackArgs);
                 
                 // 清理已使用的ACK回调
-                unset($this->ackCallbacks[$callbackKey]);
+                $this->removeAckCallback($callbackKey, $ackId);
                 
                 return true;
                 
             } catch (ReflectionException $e) {
                 // 备用策略：直接传递ACK数据
                 call_user_func($callback, $ackData);
-                unset($this->ackCallbacks[$callbackKey]);
+                $this->removeAckCallback($callbackKey, $ackId);
                 return true;
             }
         }
@@ -536,21 +523,16 @@ class EventHandler
 
     /**
      * 处理错误包
-     * @param array $packet 数据包
-     * @param array $socket socket实例
      */
-    private function handleError(array $packet, array $socket)
+    private function handleError(array $packet, array $socket): bool
     {
         return false;
     }
 
     /**
      * 验证授权信息
-     * @param string $namespace 命名空间
-     * @param mixed $auth 授权数据
-     * @return bool 是否验证通过
      */
-    private function validateAuth($namespace, $auth)
+    private function validateAuth(string $namespace, mixed $auth): bool
     {
         // 简单的验证逻辑，可根据需求扩展
         if (($namespace === '/' || $namespace === '/chat') && $auth === null) {
@@ -563,10 +545,8 @@ class EventHandler
 
     /**
      * 发送数据包
-     * @param array $socket socket实例
-     * @param array $packet 要发送的数据包
      */
-    private function sendPacket(array $socket, array $packet)
+    private function sendPacket(array $socket, array $packet): void
     {
         // 检查socket中是否有session对象
         if (isset($socket['session']) && method_exists($socket['session'], 'send')) {
@@ -629,10 +609,8 @@ class EventHandler
 
     /**
      * 发送错误
-     * @param array $socket socket实例
-     * @param string $message 错误消息
      */
-    private function sendError(array $socket, $message)
+    private function sendError(array $socket, string $message): void
     {
         $this->sendPacket($socket, [
             'type' => 'CONNECT_ERROR',
@@ -643,12 +621,8 @@ class EventHandler
 
     /**
      * 发送ACK确认
-     * @param array $socket socket实例
-     * @param string $namespace 命名空间
-     * @param int $ackId ACK ID
-     * @param mixed $data 响应数据
      */
-    private function sendAck(array $socket, $namespace, $ackId, $data)
+    private function sendAck(array $socket, string $namespace, int $ackId, mixed $data): void
     {
         // 直接构建并发送ACK数据包
         if (isset($socket['session']) && method_exists($socket['session'], 'send')) {
@@ -678,7 +652,7 @@ class EventHandler
     /**
      * 构建ACK的Engine.IO数据包
      */
-    private function buildAckEngineIOPacket($namespace, $ackId, $ackPacket): string
+    private function buildAckEngineIOPacket(string $namespace, int $ackId, string $ackPacket): string
     {
         if ($namespace !== '/') {
             return '43' . $namespace . ',' . $ackId . $ackPacket;
@@ -698,42 +672,85 @@ class EventHandler
         
         try {
             $session->send($message);
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             // 静默处理发送失败
         }
     }
 
     /**
      * 存储ACK回调函数
-     * @param array $socket socket实例
-     * @param string $namespace 命名空间
-     * @param int $ackId ACK ID
-     * @param callable $callback 回调函数
      */
-    public function storeAckCallback(array $socket, $namespace, $ackId, callable $callback)
+    public function storeAckCallback(array $socket, string $namespace, int $ackId, callable $callback): void
     {
         $callbackKey = "{$socket['id']}:{$namespace}:{$ackId}";
         $this->ackCallbacks[$callbackKey] = $callback;
+        
+        // 添加二级索引
+        if (!isset($this->ackCallbacksById[$ackId])) {
+            $this->ackCallbacksById[$ackId] = [];
+        }
+        $this->ackCallbacksById[$ackId][] = $callbackKey;
     }
     
     /**
-     * 执行ACK回调函数
-     * @param int $ackId ACK ID
-     * @param array $data ACK数据
+     * 移除ACK回调（同时清理二级索引）
      */
-    public function executeAckCallback(int $ackId, $data): bool
+    private function removeAckCallback(string $callbackKey, int $ackId): void
     {
-        foreach ($this->ackCallbacks as $key => $callback) {
-            if (strpos($key, ":{$ackId}") !== false) {
-                $ackArgs = is_array($data) ? $data : [$data];
-                
-                try {
-                    call_user_func_array($callback, $ackArgs);
-                    unset($this->ackCallbacks[$key]);
-                    return true;
-                } catch (\Exception $e) {
-                    return false;
+        // 从主存储移除
+        unset($this->ackCallbacks[$callbackKey]);
+        
+        // 从二级索引移除
+        if (isset($this->ackCallbacksById[$ackId])) {
+            $index = array_search($callbackKey, $this->ackCallbacksById[$ackId], true);
+            if ($index !== false) {
+                array_splice($this->ackCallbacksById[$ackId], $index, 1);
+                if (empty($this->ackCallbacksById[$ackId])) {
+                    unset($this->ackCallbacksById[$ackId]);
                 }
+            }
+        }
+    }
+    
+    /**
+     * 执行ACK回调函数（优化版，使用二级索引）
+     */
+    public function executeAckCallback(int $ackId, mixed $data): bool
+    {
+        // 使用二级索引直接查找，避免遍历所有回调
+        if (!isset($this->ackCallbacksById[$ackId])) {
+            return false;
+        }
+        
+        foreach ($this->ackCallbacksById[$ackId] as $callbackKey) {
+            if (!isset($this->ackCallbacks[$callbackKey])) {
+                continue;
+            }
+            
+            $callback = $this->ackCallbacks[$callbackKey];
+            $ackArgs = is_array($data) ? $data : [$data];
+            
+            try {
+                $reflection = new ReflectionFunction($callback);
+                $expectedParams = $reflection->getNumberOfParameters();
+                
+                // 构建ACK调用参数
+                $finalArgs = [];
+                if (is_array($data)) {
+                    if ($expectedParams >= count($data)) {
+                        $finalArgs = array_pad($data, $expectedParams, null);
+                    } else {
+                        $finalArgs = $data;
+                    }
+                } else {
+                    $finalArgs = array_pad([$data], $expectedParams, null);
+                }
+                
+                call_user_func_array($callback, $finalArgs);
+                $this->removeAckCallback($callbackKey, $ackId);
+                return true;
+            } catch (\Exception $e) {
+                return false;
             }
         }
         
@@ -741,47 +758,35 @@ class EventHandler
     }
     
     /**
-     * 检查是否存在事件处理器
-     * @param string $namespace 命名空间
-     * @param string $eventName 事件名称
-     * @return bool 是否存在
+     * 规范化命名空间
      */
-    public function hasEventHandler($namespace, $eventName)
+    private function normalizeNamespace(string $namespace): string
     {
-        $namespace = $namespace === '' ? '/' : $namespace;
-        
-        if (isset($this->namespaceHandlers[$namespace]['events'][$eventName])) {
-            return true;
-        }
-        
-        return false;
+        return $namespace === '' ? '/' : $namespace;
+    }
+    
+    /**
+     * 检查是否存在事件处理器
+     */
+    public function hasEventHandler(string $namespace, string $eventName): bool
+    {
+        $namespace = $this->normalizeNamespace($namespace);
+        return isset($this->namespaceHandlers[$namespace]['events'][$eventName]);
     }
     
     /**
      * 获取事件处理器
-     * @param string $namespace 命名空间
-     * @param string $eventName 事件名称
-     * @return callable|null 事件处理器
      */
-    public function getEventHandler($namespace, $eventName)
+    public function getEventHandler(string $namespace, string $eventName): ?callable
     {
-        $namespace = $namespace === '' ? '/' : $namespace;
-        
-        if (isset($this->namespaceHandlers[$namespace]['events'][$eventName])) {
-            return $this->namespaceHandlers[$namespace]['events'][$eventName];
-        }
-        
-        return null;
+        $namespace = $this->normalizeNamespace($namespace);
+        return $this->namespaceHandlers[$namespace]['events'][$eventName] ?? null;
     }
 
     /**
      * 触发事件处理（兼容方法）
-     * @param Session $session 会话对象
-     * @param string $namespace 命名空间
-     * @param string $eventName 事件名称
-     * @param array $args 事件参数
      */
-    public function triggerEvent(Session $session, string $namespace = '/', string $eventName = '', array $args = [])
+    public function triggerEvent(Session $session, string $namespace = '/', string $eventName = '', array $args = []): mixed
     {
         return $this->triggerEventWithAck($session, $namespace, $eventName, $args, null);
     }
@@ -826,13 +831,8 @@ class EventHandler
     
     /**
      * 分发事件（兼容方法）
-     * @param Session $session 会话对象
-     * @param string $eventName 事件名称
-     * @param mixed $eventData 事件数据
-     * @param array $socket Socket信息
-     * @return bool 是否处理成功
      */
-    public function dispatchEvent(Session $session, string $eventName, $eventData, array $socket): bool
+    public function dispatchEvent(Session $session, string $eventName, mixed $eventData, array $socket): bool
     {
         return $this->triggerEvent($session, $socket['namespace'] ?? '/', $eventName, $eventData);
     }

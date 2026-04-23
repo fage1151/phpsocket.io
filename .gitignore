@@ -2,28 +2,59 @@
 /vendor/
 /composer.lock
 
-# IDE
+# IDE & Editors
 /.idea/
 /.vscode/
 *.swp
 *.swo
 *~
+*.sublime-project
+*.sublime-workspace
 
-# Build
+# Build & Artefacts
 *.phar
+/dist/
+/build/
 
 # Logs
 *.log
 /server.log
+/logs/
 
-# OS
+# OS files
 .DS_Store
 Thumbs.db
 
-# Test
+# Testing & Coverage
 /.phpunit.result.cache
 /coverage/
+.phpunit.cache/
 
 # Temporary files
 /tmp/
 /cache/
+*.tmp
+
+# Environment (optional - use .env.example instead)
+/.env
+/.env.local
+/.env.*.local
+
+# Dev & test files
+test_final.php
+*.test.php
+/debug/
+
+# Performance cache
+*.cache
+.cache/
+
+# Node (if using any frontend tools)
+/node_modules/
+/package-lock.json
+/yarn.lock
+
+# Sensitive data
+*.key
+*.pem
+*.crt

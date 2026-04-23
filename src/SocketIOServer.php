@@ -16,28 +16,19 @@ use Psr\Log\LogLevel;
  */
 class SocketIOServer
 {
-    // 静态属性：存储全局服务器实例
-    private static $instance = null;
+    private static ?self $instance = null;
     
-    private $serverManager;         // 服务器配置管理器
-    private $roomManager;           // 房间管理器
-    private $middlewareHandler;     // 中间件处理器
-    private $eventHandler;          // 事件处理器
-    private $engineIoHandler;       // Engine.IO协议处理器
-    private $pollingHandler;        // HTTP轮询处理器
-    private $httpRequestHandler;    // HTTP请求处理器
-    private $namespaceHandlers = []; // 命名空间处理器缓存
-    private $sid = null;            // Socket ID (兼容server.php调用)
-    private $logger;                // PSR-3 日志记录器
-    
-    /**
-     * 会话到Socket实例的映射缓存
-     */
-    private $sessionSocketMap = [];
-    
-    /**
-     * 保存监听地址和选项（用于延迟启动）
-     */
+    private ?ServerManager $serverManager;
+    private ?RoomManager $roomManager;
+    private ?MiddlewareHandler $middlewareHandler;
+    private ?EventHandler $eventHandler;
+    private ?EngineIOHandler $engineIoHandler;
+    private ?PollingHandler $pollingHandler;
+    private ?HttpRequestHandler $httpRequestHandler;
+    private array $namespaceHandlers = [];
+    private ?string $sid = null;
+    private ?LoggerInterface $logger = null;
+    private array $sessionSocketMap = [];
     private ?string $listenAddress = null;
     private ?int $listenPort = null;
     private array $listenContext = [];
@@ -48,22 +39,13 @@ class SocketIOServer
         $this->initializeComponents($options);
         $this->configureComponents();
         $this->parseListenAddress($listen, $options);
-        
-        // 不自动启动，总是等待用户调用 start()
-        // 这样无论 workerCount 是多少，都可以正确设置 adapter 后再启动
     }
     
-    /**
-     * 初始化日志器
-     */
     private function initializeLogger(array $options): void
     {
         $this->logger = new Logger($options['logLevel'] ?? $options['log_level'] ?? LogLevel::INFO);
     }
     
-    /**
-     * 初始化组件
-     */
     private function initializeComponents(array $options): void
     {
         $this->serverManager = new ServerManager();
@@ -75,33 +57,25 @@ class SocketIOServer
         $this->httpRequestHandler = new HttpRequestHandler($this->serverManager, $this->pollingHandler, $this->engineIoHandler);
     }
     
-    /**
-     * 配置组件依赖和回调
-     */
     private function configureComponents(): void
     {
-        // 将 Logger 传递给各个组件
         $this->engineIoHandler->setLogger($this->logger);
         $this->eventHandler->setLogger($this->logger);
-        
-        // 设置依赖
         $this->engineIoHandler->setEventHandler($this->eventHandler);
         $this->engineIoHandler->setRoomManager($this->roomManager);
         $this->roomManager->setServer($this);
         
-        // 设置回调
-        $this->engineIoHandler->setSocketIOMessageHandler(fn(string $message, $connection, $session) => 
-            $this->handleSocketIOMessage($message, $connection, $session)
+        $this->engineIoHandler->setSocketIOMessageHandler(
+            fn(string $message, mixed $connection, Session $session) 
+                => $this->handleSocketIOMessage($message, $connection, $session)
         );
         
-        $this->engineIoHandler->setBinaryMessageHandler(fn(string $binaryData, $connection, $session) => 
-            $this->handleSocketIOBinaryMessage($binaryData, $connection, $session)
+        $this->engineIoHandler->setBinaryMessageHandler(
+            fn(string $binaryData, mixed $connection, Session $session) 
+                => $this->handleSocketIOBinaryMessage($binaryData, $connection, $session)
         );
     }
     
-    /**
-     * 手动启动服务器
-     */
     public function start(): void
     {
         if ($this->listenPort === null || $this->listenAddress === null) {
@@ -110,19 +84,14 @@ class SocketIOServer
         $this->listen($this->listenPort, $this->listenAddress, $this->listenContext);
     }
     
-    /**
-     * 解析监听地址（不启动服务器）
-     */
     private function parseListenAddress(string $listen, array $options): void
     {
         $this->serverManager->setConfig($options);
         
-        // 移除可能的 http:// 前缀
-        if (strpos($listen, 'http://') === 0) {
+        if (str_starts_with($listen, 'http://')) {
             $listen = substr($listen, 7);
         }
         
-        // 解析地址和端口
         $colonPos = strpos($listen, ':');
         if ($colonPos === false) {
             throw new \Exception('Invalid listen format. Use "address:port" format.');
@@ -136,42 +105,26 @@ class SocketIOServer
         }
         
         $this->listenPort = (int)$portStr;
-        $this->listenContext = ['ssl' => ($options['ssl'] ?? [])];
+        $this->listenContext = ['ssl' => $options['ssl'] ?? []];
     }
     
-    /**
-     * 设置跨进程适配器
-     */
-    public function setAdapter(\PhpSocketIO\Adapter\AdapterInterface $adapter)
+    public function setAdapter(Adapter\AdapterInterface $adapter): void
     {
         $this->serverManager->setAdapter($adapter);
     }
     
-    /**
-     * 获取Socket ID
-     */
-    public function getId()
+    public function getId(): ?string
     {
         return $this->sid;
     }
     
-    /**
-     * 检查是否启用集群模式
-     */
     public function isClusterEnabled(): bool
     {
         return $this->serverManager->isClusterEnabled();
     }
 
-    /**
-     * 声明事件监听器回调函数 (支持多参数)
-     * @param string|'connection' $event 事件名称（如 'connection'、'message'、自定义事件）
-     * @param callable $handler 事件处理器回调函数
-     * @param string|'/' $namespace 命名空间（可选，默认 '/'）
-     */
-    public function on($event, callable $handler, string $namespace = '/', string $type = '@EVENT_HANDLER')
+    public function on(string $event, callable $handler, string $namespace = '/', string $type = '@EVENT_HANDLER'): self
     {
-        // 如果是connection事件，需要缓存处理器供EventHandler调用
         if ($event === 'connection') {
             if (!isset($this->namespaceHandlers[$namespace])) {
                 $this->namespaceHandlers[$namespace] = [];
@@ -179,13 +132,11 @@ class SocketIOServer
             $this->namespaceHandlers[$namespace]['connection'] = $handler;
         }
         
-        return $this->eventHandler->on($event, $handler, $namespace);
+        $this->eventHandler->on($event, $handler, $namespace);
+        return $this;
     }
     
-    /**
-     * 获取Socket.IO回调函数（EventHandler需要调用）
-     */
-    public function getSocketIoCallback($event, $namespace = '/')
+    public function getSocketIoCallback(string $event, string $namespace = '/'): ?callable
     {
         if ($event === 'connection' && isset($this->namespaceHandlers[$namespace]['connection'])) {
             return $this->namespaceHandlers[$namespace]['connection'];
@@ -193,50 +144,27 @@ class SocketIOServer
         return null;
     }
     
-    /**
-     * 获取命名空间处理器（EventHandler需要调用）
-     */
-    public function getNamespaceHandlers()
+    public function getNamespaceHandlers(): array
     {
         return $this->namespaceHandlers;
     }
     
-    /**
-     * 检查是否有命名空间处理器（EventHandler需要调用）
-     */
-    public function hasNamespaceHandler($namespace = '/')
+    public function hasNamespaceHandler(string $namespace = '/'): bool
     {
         return isset($this->namespaceHandlers[$namespace]);
     }
     
-    //========================================================================
-    // 日志相关方法
-    //========================================================================
-    
-    /**
-     * 获取日志器
-     * @return LoggerInterface
-     */
     public function getLogger(): LoggerInterface
     {
         return $this->logger;
     }
     
-    /**
-     * 设置日志器
-     * @param LoggerInterface $logger
-     * @return self
-     */
     public function setLogger(LoggerInterface $logger): self
     {
         $this->logger = $logger;
         return $this;
     }
     
-    /**
-     * 设置日志级别
-     * @param string $level PSR-3 日志级别
-     */
     public function setLogLevel(string $level): void
     {
         if (method_exists($this->logger, 'setLevel')) {
@@ -244,14 +172,7 @@ class SocketIOServer
         }
     }
 
-    //========================================================================
-    // Workerman事件接口
-    //========================================================================
-    
-    /**
-     * 当有客户端连接时触发（Workerman接口）
-     */
-    public function onConnect(TcpConnection $connection)
+    public function onConnect(TcpConnection $connection): void
     {
         $this->logger->info('New client connection established', [
             'remote_ip' => $connection->getRemoteIp(),
@@ -259,10 +180,7 @@ class SocketIOServer
         ]);
     }
 
-    /**
-     * 当收到消息时触发（Workerman接口）
-     */
-    public function onMessage(TcpConnection $connection, $data): void
+    public function onMessage(TcpConnection $connection, mixed $data): void
     {
         $this->logger->debug('Received message from client', [
             'remote_ip' => $connection->getRemoteIp(),
@@ -273,10 +191,7 @@ class SocketIOServer
         $this->httpRequestHandler->handleMessage($connection, $data);
     }
     
-    /**
-     * 获取数据长度
-     */
-    private function getDataLength($data): int|string
+    private function getDataLength(mixed $data): int|string
     {
         if (is_string($data)) {
             return strlen($data);
@@ -289,10 +204,7 @@ class SocketIOServer
         return 'object';
     }
 
-    /**
-     * 当连接关闭时触发（Workerman接口）
-     */
-    public function onClose(TcpConnection $connection)
+    public function onClose(TcpConnection $connection): void
     {
         if (isset($connection->session)) {
             $session = $connection->session;
@@ -301,69 +213,45 @@ class SocketIOServer
                 'sid' => $session->sid
             ]);
             
-            // 清理房间
             $this->roomManager->removeSession($session->sid);
             
-            // 触发所有命名空间的断开事件
             foreach ($session->namespaces as $namespace => $auth) {
                 $this->eventHandler->triggerEvent($session, $namespace, 'disconnect', []);
             }
             
-            // 清理会话资源
             Session::remove($session->sid);
         }
     }
 
-    /**
-     * 当发生错误时触发（Workerman接口）
-     */
-    public function onError(TcpConnection $connection, $code, $msg)
+    public function onError(TcpConnection $connection, $code, $msg): void
     {
     }
 
-    //========================================================================
-    // 服务器启动和控制方法
-    //========================================================================
-
-    /**
-     * 启动Socket.IO服务器
-     */
     public function listen(int $port = 8088, string $address = '0.0.0.0', array $context = []): void
     {
-        // 在启动服务器前验证配置
         $this->serverManager->validateConfigBeforeStart();
-        
-        // 提取SSL配置
         $sslConfig = $context['ssl'] ?? [];
-        
-        // 创建Workerman Worker实例，protocol始终为http，传递整个context
         $worker = new Worker("http://{$address}:{$port}", $context);
         $worker->name = 'SocketIO-Server';
         
-        // 设置worker数量
         $workerCount = $this->serverManager->getWorkerCount();
         if ($workerCount > 1) {
             $worker->count = $workerCount;
         }
         
-        // 如果有SSL配置，设置transport为ssl
         if (!empty($sslConfig)) {
             $worker->transport = 'ssl';
         }
         
-        // 绑定事件处理器
         $worker->onConnect = [$this, 'onConnect'];
         $worker->onMessage = [$this, 'onMessage'];
         $worker->onClose = [$this, 'onClose'];
         $worker->onError = [$this, 'onError'];
         
-        // 启动心跳定时器和初始化 Adapter
-        $worker->onWorkerStart = function($worker) use ($address, $port, $sslConfig) {
-            // 在 Workerman 环境中初始化 Adapter
+        $worker->onWorkerStart = function(Worker $worker) use ($address, $port, $sslConfig): void {
             $this->serverManager->initAdapter();
             $this->startHeartbeat();
             
-            // 只在第一个 Worker（id 0）打印启动日志，避免重复
             if ($worker->id === 0) {
                 $this->logger->info('Socket.IO server started', [
                     'address' => $address,
@@ -375,21 +263,12 @@ class SocketIOServer
         };
     }
 
-    /**
-     * 高性能心跳机制 - 批量处理以避免阻塞
-     */
-    private function startHeartbeat()
+    private function startHeartbeat(): void
     {
         $this->engineIoHandler->startHeartbeat();
     }
     
-    /**
-     * 处理Socket.IO协议消息
-     * @param string $message Socket.IO消息
-     * @param Workerman\Connection\TcpConnection $connection 连接对象
-     * @param Session $session 会话对象
-     */
-    private function handleSocketIOMessage(string $message, $connection, $session): void
+    private function handleSocketIOMessage(string $message, mixed $connection, Session $session): void
     {
         try {
             $packet = $this->parseSocketIOPacket($message, $session);
@@ -421,12 +300,9 @@ class SocketIOServer
         }
     }
     
-    /**
-     * 解析Socket.IO数据包
-     */
-    private function parseSocketIOPacket(string $message, $session): ?array
+    private function parseSocketIOPacket(string $message, Session $session): ?array
     {
-        $packet = PacketParser::parseSocketIOPacket($message) ?: null;
+        $packet = PacketParser::parseSocketIOPacket($message);
         if (!$packet) {
             $this->logger->warning('Socket.IO 无法解析数据包', [
                 'sid' => $session->sid,
@@ -436,10 +312,7 @@ class SocketIOServer
         return $packet;
     }
     
-    /**
-     * 处理二进制事件占位符
-     */
-    private function handleBinaryEventPlaceholder(array $packet, string $message, $session): bool
+    private function handleBinaryEventPlaceholder(array $packet, string $message, Session $session): bool
     {
         if ($packet['type'] === 'BINARY_EVENT' && isset($packet['binaryCount']) && $packet['binaryCount'] > 0) {
             $this->logger->debug('Socket.IO 收到二进制事件包，等待附件', [
@@ -459,10 +332,7 @@ class SocketIOServer
         return false;
     }
     
-    /**
-     * 根据包类型处理
-     */
-    private function processPacketByType(string $type, $connection, $session, string $namespace, $data, array $packet): void
+    private function processPacketByType(string $type, mixed $connection, Session $session, string $namespace, mixed $data, array $packet): void
     {
         match ($type) {
             'CONNECT' => $this->handleConnectPacket($connection, $session, $namespace, $data),
@@ -477,13 +347,11 @@ class SocketIOServer
             ),
             'ACK', 'BINARY_ACK' => $this->handleAckPacket($connection, $session, $namespace, $data, $packet['id'] ?? null),
             'ERROR' => $this->handleErrorPacket($connection, $session, $namespace, $data),
+            default => null,
         };
     }
     
-    /**
-     * 处理Socket.IO二进制消息
-     */
-    private function handleSocketIOBinaryMessage($binaryData, $connection, $session): void
+    private function handleSocketIOBinaryMessage(string $binaryData, mixed $connection, Session $session): void
     {
         $this->logger->debug('Received binary message', [
             'size' => strlen($binaryData),
@@ -497,18 +365,12 @@ class SocketIOServer
         }
     }
     
-    /**
-     * 检查是否有待处理的二进制占位符
-     */
-    private function hasPendingBinaryPlaceholder($session): bool
+    private function hasPendingBinaryPlaceholder(Session $session): bool
     {
         return isset($session->pendingBinaryPlaceholder) && $session->pendingBinaryCount > 0;
     }
     
-    /**
-     * 处理二进制附件
-     */
-    private function processBinaryAttachment($binaryData, $connection, $session): void
+    private function processBinaryAttachment(string $binaryData, mixed $connection, Session $session): void
     {
         $this->collectBinaryAttachment($binaryData, $session);
         
@@ -518,10 +380,7 @@ class SocketIOServer
         }
     }
     
-    /**
-     * 收集二进制附件
-     */
-    private function collectBinaryAttachment($binaryData, $session): void
+    private function collectBinaryAttachment(string $binaryData, Session $session): void
     {
         $attachmentIndex = count($session->pendingBinaryAttachments);
         $session->pendingBinaryAttachments[$attachmentIndex] = $binaryData;
@@ -533,18 +392,12 @@ class SocketIOServer
         ]);
     }
     
-    /**
-     * 检查是否所有附件都已收到
-     */
-    private function allAttachmentsReceived($session): bool
+    private function allAttachmentsReceived(Session $session): bool
     {
         return count($session->pendingBinaryAttachments) >= $session->pendingBinaryCount;
     }
     
-    /**
-     * 处理完整的二进制事件
-     */
-    private function processCompleteBinaryEvent($session, $connection): void
+    private function processCompleteBinaryEvent(Session $session, mixed $connection): void
     {
         $this->logger->debug('All binary attachments received, processing complete event', [
             'sid' => $session->sid
@@ -553,31 +406,21 @@ class SocketIOServer
         $this->combineAndProcessBinaryAttachments($session, $connection);
     }
     
-    /**
-     * 清理二进制状态
-     */
-    private function cleanupBinaryState($session): void
+    private function cleanupBinaryState(Session $session): void
     {
         $session->pendingBinaryAttachments = [];
         $session->pendingBinaryPlaceholder = null;
         $session->pendingBinaryCount = 0;
     }
     
-    /**
-     * 处理独立的二进制数据
-     */
-    private function handleStandaloneBinaryData($session): void
+    private function handleStandaloneBinaryData(Session $session): void
     {
         $this->logger->debug('No pending placeholder packet, treating as standalone attachment', [
             'sid' => $session->sid
         ]);
-        // 这里可以添加独立二进制数据的处理逻辑
     }
     
-    /**
-     * 合并所有二进制附件并处理完整事件
-     */
-    private function combineAndProcessBinaryAttachments(Session $session, $connection): void
+    private function combineAndProcessBinaryAttachments(Session $session, mixed $connection): void
     {
         $originalPacket = $this->getOriginalPacketFromPlaceholder($session);
         if (!$originalPacket) {
@@ -592,10 +435,7 @@ class SocketIOServer
         $this->processBinaryEvent($packet, $connection, $session);
     }
     
-    /**
-     * 从占位符中获取原始数据包
-     */
-    private function getOriginalPacketFromPlaceholder($session): ?string
+    private function getOriginalPacketFromPlaceholder(Session $session): ?string
     {
         $placeholderInfo = $session->pendingBinaryPlaceholder;
         $originalPacket = $placeholderInfo['packet'] ?? null;
@@ -609,10 +449,7 @@ class SocketIOServer
         return $originalPacket;
     }
     
-    /**
-     * 解析并替换二进制占位符
-     */
-    private function parseAndReplacePlaceholders(string $originalPacket, $session): ?array
+    private function parseAndReplacePlaceholders(string $originalPacket, Session $session): ?array
     {
         $packet = PacketParser::parseSocketIOPacket($originalPacket);
         if (!$packet) {
@@ -622,14 +459,10 @@ class SocketIOServer
             return null;
         }
         
-        $packet = PacketParser::replaceBinaryPlaceholders($packet, $session->pendingBinaryAttachments);
-        return $packet;
+        return PacketParser::replaceBinaryPlaceholders($packet, $session->pendingBinaryAttachments);
     }
     
-    /**
-     * 处理二进制事件
-     */
-    private function processBinaryEvent(array $packet, $connection, $session): void
+    private function processBinaryEvent(array $packet, mixed $connection, Session $session): void
     {
         $this->logger->debug('Processing complete binary event', [
             'event' => $packet['event'],
@@ -647,30 +480,18 @@ class SocketIOServer
         );
     }
     
-    /**
-     * 标准化事件数据
-     */
-    private function normalizeEventData($data): array
+    private function normalizeEventData(mixed $data): array
     {
-        if (is_array($data)) {
-            return $data;
-        }
-        return [$data];
+        return is_array($data) ? $data : [$data];
     }
     
-    /**
-     * 处理连接包
-     */
-    private function handleConnectPacket($connection, $session, string $namespace, $authData): void
+    private function handleConnectPacket(mixed $connection, Session $session, string $namespace, mixed $authData): void
     {
-        // 记录命名空间连接
         $session->namespaces[$namespace] = true;
         
-        // 创建并缓存Socket实例
         $sessionKey = "{$session->sid}:{$namespace}";
         $socket = $this->sessionSocketMap[$sessionKey] ??= new Socket($session->sid, $namespace, $this);
         
-        // 触发连接事件
         $this->eventHandler->triggerConnect(
             [
                 'id' => $sessionKey,
@@ -683,7 +504,6 @@ class SocketIOServer
             $this
         );
         
-        // 构建 Socket.IO v4 标准连接确认包
         $socketIoPacket = PacketParser::buildSocketIOPacket('CONNECT', [
             'namespace' => $namespace,
             'data' => [
@@ -691,32 +511,23 @@ class SocketIOServer
             ]
         ]);
         
-        // 包装为 Engine.IO 4 类型包发送
         $engineIoPacket = '4' . $socketIoPacket;
         $session->send($engineIoPacket);
     }
     
-    /**
-     * 处理断开连接包
-     */
-    private function handleDisconnectPacket($connection, $session, $namespace)
+    private function handleDisconnectPacket(mixed $connection, Session $session, string $namespace): void
     {
         $this->logger->debug('Disconnecting namespace', [
             'namespace' => $namespace,
             'sid' => $session->sid
         ]);
         
-        // 移除命名空间记录
         unset($session->namespaces[$namespace]);
         
-        // 触发断开事件
         $this->eventHandler->triggerEvent($session, $namespace, 'disconnect', []);
     }
     
-    /**
-     * 处理事件包
-     */
-    private function handleEventPacket($connection, $session, string $namespace, string $eventName, array $eventArgs = [], ?int $ackId = null): void
+    private function handleEventPacket(mixed $connection, Session $session, string $namespace, string $eventName, array $eventArgs = [], ?int $ackId = null): void
     {
         try {
             if (empty($eventName)) {
@@ -746,39 +557,27 @@ class SocketIOServer
         }
     }
     
-    /**
-     * 获取或创建Socket实例
-     */
-    private function getOrCreateSocket($session, string $namespace): Socket
+    private function getOrCreateSocket(Session $session, string $namespace): Socket
     {
         $sessionKey = "{$session->sid}:{$namespace}";
         return $this->sessionSocketMap[$sessionKey] ??= new Socket($session->sid, $namespace, $this);
     }
     
-    /**
-     * 更新会话连接信息
-     */
-    private function updateSessionConnection($session, $connection): void
+    private function updateSessionConnection(Session $session, mixed $connection): void
     {
         $session->connection = $connection;
         $session->transport = 'websocket';
         $session->isWs = true;
     }
     
-    /**
-     * 处理事件
-     */
-    private function processEvent($session, string $namespace, string $eventName, array $eventArgs, $socket, ?int $ackId): void
+    private function processEvent(Session $session, string $namespace, string $eventName, array $eventArgs, Socket $socket, ?int $ackId): void
     {
         if (!$this->eventHandler->triggerEventWithAck($session, $namespace, $eventName, $eventArgs, $ackId)) {
             $this->processEventHandlers($session, $namespace, $eventName, $eventArgs, $socket, $ackId);
         }
     }
     
-    /**
-     * 处理ACK包
-     */
-    private function handleAckPacket($connection, $session, $namespace, $data, ?int $ackId = null): void
+    private function handleAckPacket(mixed $connection, Session $session, string $namespace, mixed $data, ?int $ackId = null): void
     {
         $this->logger->debug('Received ACK packet', [
             'namespace' => $namespace,
@@ -790,13 +589,11 @@ class SocketIOServer
             return;
         }
         
-        // 优先从 EventHandler 查找 ACK 回调
         if ($this->eventHandler && method_exists($this->eventHandler, 'executeAckCallback')) {
             $this->eventHandler->executeAckCallback($ackId, $data);
             return;
         }
         
-        // 也从 Session 中查找 ACK 回调
         if (isset($session->ackCallbacks) && is_array($session->ackCallbacks)) {
             if (isset($session->ackCallbacks[$ackId]) && is_callable($session->ackCallbacks[$ackId])) {
                 $callback = $session->ackCallbacks[$ackId];
@@ -806,10 +603,7 @@ class SocketIOServer
         }
     }
     
-    /**
-     * 处理事件处理器
-     */
-    private function processEventHandlers($session, $namespace, $eventName, $eventArgs, $socket, $ackId = null)
+    private function processEventHandlers(Session $session, string $namespace, string $eventName, array $eventArgs, Socket $socket, ?int $ackId): bool
     {
         try {
             $this->logger->debug('Processing event handlers', [
@@ -819,7 +613,6 @@ class SocketIOServer
             ]);
             
             $foundHandler = false;
-            // 从EventHandler获取该命名空间的事件处理器
             $handler = null;
             if ($this->eventHandler->hasEventHandler($namespace, $eventName)) {
                 $handler = $this->eventHandler->getEventHandler($namespace, $eventName);
@@ -839,7 +632,7 @@ class SocketIOServer
                 ], $eventArgs, $namespace);
                 
                 if ($ackId !== null) {
-                    $callArgs[] = function($data) use ($session, $namespace, $ackId) {
+                    $callArgs[] = function(mixed $data) use ($session, $namespace, $ackId): void {
                         $this->eventHandler->sendAck([
                             'id' => $session->sid,
                             'session' => $session,
@@ -874,49 +667,27 @@ class SocketIOServer
         }
     }
     
-    //========================================================================
-    // 房间管理功能
-    //========================================================================
-
-    /**
-     * 将连接加入房间
-     */
-    public function join($room, Session $session = null)
+    public function join(string $room, ?Session $session = null): bool
     {
         return $this->roomManager->join($room, $session);
     }
 
-    /**
-     * 将连接从房间移除
-     */
-    public function leave($room, Session $session = null)
+    public function leave(string $room, ?Session $session = null): bool
     {
         return $this->roomManager->leave($room, $session);
     }
 
-    /**
-     * 向指定房间或Socket发送消息（链式调用）
-     * 用法：$io->to($roomOrSocket)->emit('event', ...args)
-     */
-    public function to($roomOrSocket)
+    public function to(mixed $roomOrSocket): Broadcaster
     {
-        // 返回统一的Broadcaster对象
         $broadcaster = new Broadcaster($this);
         return $broadcaster->to($roomOrSocket);
     }
 
-    /**
-     * 获取房间管理器实例
-     */
-    public function getRoomManager()
+    public function getRoomManager(): RoomManager
     {
         return $this->roomManager;
     }
 
-    /**
-     * 向所有客户端广播消息
-     * 用法：$io->emit('broadcast', '消息内容');
-     */
     public function emit(string $event, mixed ...$args): self
     {
         $broadcaster = new Broadcaster($this);
@@ -924,63 +695,38 @@ class SocketIOServer
         return $this;
     }
 
-    //========================================================================
-    // 中间件功能
-    //========================================================================
-
-    /**
-     * 注册中间件
-     */
-    public function use(callable $middleware, string $namespace = '/')
+    public function use(callable $middleware, string $namespace = '/'): self
     {
-        return $this->middlewareHandler->use($middleware, $namespace);
+        $this->middlewareHandler->use($middleware, $namespace);
+        return $this;
     }
     
-    /**
-     * 获取适配器实例
-     */
-    public function getAdapter()
+    public function getAdapter(): ?Adapter\AdapterInterface
     {
         return $this->serverManager ? $this->serverManager->getAdapter() : null;
     }
     
-    /**
-     * 获取EventHandler实例
-     */
-    public function getEventHandler()
+    public function getEventHandler(): EventHandler
     {
         return $this->eventHandler;
     }
     
-    /**
-     * 获取ServerManager实例
-     */
-    public function getServerManager()
+    public function getServerManager(): ServerManager
     {
         return $this->serverManager;
     }
     
-    /**
-     * 设置全局服务器实例（用于静态调用）
-     */
-    public static function setInstance(SocketIOServer $instance)
+    public static function setInstance(self $instance): void
     {
         self::$instance = $instance;
     }
     
-    /**
-     * 获取全局服务器实例
-     */
-    public static function getInstance()
+    public static function getInstance(): ?self
     {
         return self::$instance;
     }
     
-    /**
-     * 获取所有 Socket 实例 (v4.0.0+)
-     * 返回匹配的 Socket 实例数组
-     */
-    public function fetchSockets($namespace = '/'): array
+    public function fetchSockets(string $namespace = '/'): array
     {
         $sockets = [];
         $activeSessions = Session::all();
@@ -999,18 +745,12 @@ class SocketIOServer
         return $sockets;
     }
     
-    /**
-     * 检查会话是否已连接到指定命名空间
-     */
-    private function isSessionConnectedToNamespace($session, string $namespace): bool
+    private function isSessionConnectedToNamespace(Session $session, string $namespace): bool
     {
         return isset($session->namespaces[$namespace]) && $session->namespaces[$namespace];
     }
     
-    /**
-     * 获取会话对应的Socket实例
-     */
-    private function getSocketForSession($session, string $namespace, string $sid): Socket
+    private function getSocketForSession(Session $session, string $namespace, string $sid): Socket
     {
         $sessionKey = "{$sid}:{$namespace}";
         
@@ -1018,20 +758,14 @@ class SocketIOServer
             return $this->sessionSocketMap[$sessionKey];
         }
         
-        // 如果没有缓存，创建新的 Socket 实例
         $socket = new Socket($sid, $namespace, $this);
         $socket->session = $session;
         
-        // 缓存 Socket 实例以便复用
         $this->sessionSocketMap[$sessionKey] = $socket;
         return $socket;
     }
     
-    /**
-     * 获取指定命名空间的 Socket.IO 实例
-     * 用法：$io->of('/chat')->emit('event', 'data');
-     */
-    public function of($namespace = '/')
+    public function of(string $namespace = '/'): Broadcaster
     {
         return new Broadcaster($this, $namespace);
     }

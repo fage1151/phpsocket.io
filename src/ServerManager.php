@@ -6,19 +6,24 @@ namespace PhpSocketIO;
 
 use PhpSocketIO\Adapter\AdapterInterface;
 
+/**
+ * Socket.IO 服务器管理器类 - PHP 8.1+ 深度优化版本
+ *
+ * @package PhpSocketIO
+ */
 final class ServerManager
 {
     private const DEFAULT_PING_INTERVAL = 25000;
     private const DEFAULT_PING_TIMEOUT = 20000;
-    
-    private int $pingInterval;
-    private int $pingTimeout;
-    private ?AdapterInterface $adapter = null;
+
+    public int $pingInterval;
+    public int $pingTimeout;
+    public ?AdapterInterface $adapter = null;
     private bool $clusterEnabled = false;
-    private array $serverOptions = [];
+    public array $serverOptions = [];
     private bool $isRunning = false;
-    private ?array $cors = null;
-    private int $workerCount = 1;
+    public ?array $cors = null;
+    public int $workerCount = 1;
 
     public function __construct(array $config = [])
     {
@@ -37,23 +42,17 @@ final class ServerManager
         $this->cors = $config['cors'] ?? $this->cors;
         $this->serverOptions = array_merge($this->serverOptions, $config);
     }
-    
-    /**
-     * 在启动服务器前验证配置
-     */
+
     public function validateConfigBeforeStart(): void
     {
         $errors = $this->validateConfig();
-        
-        // 检查是否需要 adapter
+
         if ($this->workerCount > 1 && !$this->clusterEnabled) {
             $errors[] = 'When workerCount > 1, adapter must be set via setAdapter method';
         }
-        
+
         if (!empty($errors)) {
-            // 收集所有错误为一个消息
-            $errorMsg = implode('; ', $errors);
-            throw new \RuntimeException($errorMsg);
+            throw new \RuntimeException(implode('; ', $errors));
         }
     }
 
@@ -62,20 +61,15 @@ final class ServerManager
         $this->adapter = $adapter;
         $this->clusterEnabled = true;
     }
-    
-    /**
-     * 初始化 Adapter（必须在 Workerman 环境中调用）
-     */
+
     public function initAdapter(): void
     {
-        if ($this->adapter && $this->clusterEnabled) {
-            $this->adapter->init();
-        }
+        $this->adapter?->init();
     }
 
     public function getAdapter(): ?AdapterInterface
     {
-        return $this->isClusterEnabled() ? $this->adapter : null;
+        return $this->clusterEnabled ? $this->adapter : null;
     }
 
     public function isClusterEnabled(): bool
@@ -92,7 +86,7 @@ final class ServerManager
             'workerCount' => $this->workerCount,
             'adapter' => $this->adapter ? get_class($this->adapter) : null,
             'cors' => $this->cors,
-            'serverOptions' => $this->serverOptions
+            'serverOptions' => $this->serverOptions,
         ];
     }
 
@@ -110,7 +104,7 @@ final class ServerManager
     {
         return $this->cors;
     }
-    
+
     public function getWorkerCount(): int
     {
         return $this->workerCount;
@@ -129,20 +123,19 @@ final class ServerManager
     public function validateConfig(): array
     {
         $errors = [];
-        
+
         if ($this->pingInterval <= 0) {
             $errors[] = 'pingInterval must be greater than 0';
         }
-        
+
         if ($this->pingTimeout <= 0) {
             $errors[] = 'pingTimeout must be greater than 0';
         }
-        
-        // 警告：pingInterval 应该大于 pingTimeout，但不视为错误
+
         if ($this->pingInterval <= $this->pingTimeout) {
             $errors[] = 'pingInterval is recommended to be greater than pingTimeout';
         }
-        
+
         return $errors;
     }
 
@@ -154,9 +147,9 @@ final class ServerManager
             'pingInterval' => $this->pingInterval,
             'pingTimeout' => $this->pingTimeout,
             'workerCount' => $this->workerCount,
-            'sessionCount' => count(Session::all()),
+            'sessionCount' => Session::getSessionCount(),
             'adapter' => $this->adapter ? get_class($this->adapter) : 'None',
-            'configErrors' => $this->validateConfig()
+            'configErrors' => $this->validateConfig(),
         ];
     }
 
@@ -165,10 +158,9 @@ final class ServerManager
         if ($this->adapter && $this->clusterEnabled) {
             try {
                 $this->adapter->close();
-            } catch (\Exception $e) {
+            } catch (\Exception) {
             }
         }
-        
         $this->isRunning = false;
     }
 }

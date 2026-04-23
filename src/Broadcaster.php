@@ -124,6 +124,19 @@ final class Broadcaster
     }
 
     /**
+     * 构建Socket.IO数据包（优化版，复用构建结果）
+     */
+    private function buildEventPacket(string $event, array $args): array
+    {
+        $packetStr = PacketParser::buildSocketIOPacket('EVENT', [
+            'namespace' => $this->namespace,
+            'event' => $event,
+            'data' => $args
+        ]);
+        return PacketParser::parseSocketIOPacket($packetStr);
+    }
+
+    /**
      * 向指定房间发送事件
      *
      * @param string $event 事件名
@@ -133,20 +146,18 @@ final class Broadcaster
     private function emitToRooms(string $event, array $args): void
     {
         $adapter = $this->server->getAdapter();
+        $rooms = is_array($this->targetRoom) ? $this->targetRoom : [$this->targetRoom];
+        
         if ($adapter) {
-            $rooms = is_array($this->targetRoom) ? $this->targetRoom : [$this->targetRoom];
+            // 使用适配器：只构建一次数据包
+            $packetArray = $this->buildEventPacket($event, $args);
             foreach ($rooms as $room) {
-                $packet = PacketParser::buildSocketIOPacket('EVENT', [
-                    'namespace' => $this->namespace,
-                    'event' => $event,
-                    'data' => $args
-                ]);
-                $packetArray = PacketParser::parseSocketIOPacket($packet);
                 $adapter->to($room, $packetArray);
             }
             return;
         }
-        $rooms = is_array($this->targetRoom) ? $this->targetRoom : [$this->targetRoom];
+        
+        // 不使用适配器：逐个发送
         $roomManager = $this->server->getRoomManager();
         foreach ($rooms as $room) {
             $members = $roomManager->getRoomMembers($room);
@@ -167,15 +178,13 @@ final class Broadcaster
     {
         $adapter = $this->server->getAdapter();
         if ($adapter) {
-            $packet = PacketParser::buildSocketIOPacket('EVENT', [
-                'namespace' => $this->namespace,
-                'event' => $event,
-                'data' => $args
-            ]);
-            $packetArray = PacketParser::parseSocketIOPacket($packet);
+            // 使用适配器：只构建一次数据包
+            $packetArray = $this->buildEventPacket($event, $args);
             $adapter->broadcast($packetArray);
             return;
         }
+        
+        // 不使用适配器：逐个发送
         $sockets = $this->server->fetchSockets($this->namespace);
         foreach ($sockets as $socket) {
             if ($this->shouldExclude($socket->sid)) {
