@@ -231,7 +231,10 @@ class SocketIOServer
     {
         $this->serverManager->validateConfigBeforeStart();
         $sslConfig = $context['ssl'] ?? [];
-        $worker = new Worker("http://{$address}:{$port}", $context);
+        if (!class_exists('\Protocols\SocketIO')) {
+            class_alias('\Workerman\Protocols\Http', '\Protocols\SocketIO');
+        }
+        $worker = new Worker("SocketIO://{$address}:{$port}", $context);
         $worker->name = 'SocketIO-Server';
         
         $workerCount = $this->serverManager->getWorkerCount();
