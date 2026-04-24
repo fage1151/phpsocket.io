@@ -110,6 +110,7 @@ class SocketIOServer
     
     public function setAdapter(Adapter\AdapterInterface $adapter): void
     {
+        $adapter->setLogger($this->logger);
         $this->serverManager->setAdapter($adapter);
     }
     
@@ -225,6 +226,11 @@ class SocketIOServer
 
     public function onError(TcpConnection $connection, $code, $msg): void
     {
+        $this->logger->error('Connection error', [
+            'remote_address' => $connection->getRemoteAddress(),
+            'error_code' => $code,
+            'error_message' => $msg
+        ]);
     }
 
     public function listen(int $port = 8088, string $address = '0.0.0.0', array $context = []): void

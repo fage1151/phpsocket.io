@@ -8,11 +8,13 @@ final class PollingHandler
 {
     private ServerManager $serverManager;
     private EngineIOHandler $engineIoHandler;
+    private Logger $logger;
 
     public function __construct(ServerManager $serverManager, EngineIOHandler $engineIoHandler)
     {
         $this->serverManager = $serverManager;
         $this->engineIoHandler = $engineIoHandler;
+        $this->logger = $serverManager->getLogger();
     }
 
     public function handlePolling(\Workerman\Connection\TcpConnection $connection, mixed $req): void
@@ -115,6 +117,11 @@ final class PollingHandler
             $this->processPollingData($session, $body);
             $this->sendHttpResponse($connection, 200, [], 'ok');
         } catch (\Exception $e) {
+            $this->logger->error('Polling data processing failed', [
+                'sid' => $session->sid,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             $this->sendErrorResponse($connection, $e->getMessage());
         }
     }

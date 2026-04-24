@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace PhpSocketIO;
 
+use Psr\Log\LoggerInterface;
+
 /**
  * Socket.IO 广播器类
  *
@@ -47,6 +49,13 @@ final class Broadcaster
      * @var array
      */
     private array $exceptRooms = [];
+    
+    /**
+     * 日志记录器
+     *
+     * @var LoggerInterface|null
+     */
+    private ?LoggerInterface $logger = null;
 
     /**
      * 构造函数
@@ -63,6 +72,11 @@ final class Broadcaster
         $this->server = $server;
         $this->namespace = $namespace;
         $this->excludeSocket = $excludeSocket;
+        
+        // 初始化日志记录器
+        if ($this->server && method_exists($this->server, 'getLogger')) {
+            $this->logger = $this->server->getLogger();
+        }
     }
 
     /**
@@ -113,14 +127,26 @@ final class Broadcaster
     public function emit(string $event, mixed ...$args): ?SocketIOServer
     {
         if (!$this->server) {
+            $this->logger?->warning('Broadcaster未关联服务器，无法发送事件', ['event' => $event]);
             return null;
         }
-        if ($this->targetRoom) {
-            $this->emitToRooms($event, $args);
-        } else {
-            $this->emitToAll($event, $args);
+        try {
+            if ($this->targetRoom) {
+                $this->emitToRooms($event, $args);
+            } else {
+                $this->emitToAll($event, $args);
+            }
+            return $this->server;
+        } catch (\Exception $e) {
+            $this->logger?->error('Broadcaster发送事件失败', [
+                'event' => $event,
+                'namespace' => $this->namespace,
+                'targetRoom' => $this->targetRoom,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
         }
-        return $this->server;
     }
 
     /**

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace PhpSocketIO\Adapter;
 
+use Psr\Log\LoggerInterface;
+
 final class RedisAdapter implements AdapterInterface
 {
     private array $config;
@@ -17,6 +19,7 @@ final class RedisAdapter implements AdapterInterface
     private int $reconnectInterval = 1000;
     private bool $isReconnecting = false;
     private ?object $subscriber = null;
+    private ?LoggerInterface $logger = null;
 
     public function __construct(array $config = [])
     {
@@ -70,10 +73,29 @@ final class RedisAdapter implements AdapterInterface
 
                 $this->redis->select($this->config['db']);
                 $this->isReconnecting = false;
+                $this->logger?->info('Redis connected successfully', [
+                    'host' => $this->config['host'],
+                    'port' => $this->config['port'],
+                    'db' => $this->config['db'],
+                    'process_id' => $this->processId
+                ]);
                 return;
             } catch (\Exception $e) {
                 $attempt++;
+                $this->logger?->warning('Redis connection attempt failed', [
+                    'attempt' => $attempt,
+                    'max_attempts' => $maxAttempts,
+                    'host' => $this->config['host'],
+                    'port' => $this->config['port'],
+                    'error' => $e->getMessage()
+                ]);
                 if ($attempt > $maxAttempts) {
+                    $this->logger?->error('Failed to connect to Redis after max attempts', [
+                        'host' => $this->config['host'],
+                        'port' => $this->config['port'],
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString()
+                    ]);
                     throw new \RuntimeException('Failed to connect to Redis', 0, $e);
                 }
 
@@ -94,6 +116,10 @@ final class RedisAdapter implements AdapterInterface
             $this->connectRedis();
             return true;
         } catch (\Exception $e) {
+            $this->logger?->error('Redis reconnection failed', [
+                'error' => $e->getMessage(),
+                'process_id' => $this->processId
+            ]);
             $this->isReconnecting = false;
             return false;
         }
@@ -104,14 +130,28 @@ final class RedisAdapter implements AdapterInterface
         try {
             return $callback($this->redis);
         } catch (\Exception $e) {
+            $this->logger?->warning('Redis command failed, trying to reconnect', [
+                'error' => $e->getMessage(),
+                'process_id' => $this->processId
+            ]);
             if ($retry && $this->tryReconnect()) {
                 try {
                     return $callback($this->redis);
                 } catch (\Exception $e2) {
+                    $this->logger?->error('Redis command failed after reconnect', [
+                        'error' => $e2->getMessage(),
+                        'trace' => $e2->getTraceAsString(),
+                        'process_id' => $this->processId
+                    ]);
                     throw $e2;
                 }
             }
 
+            $this->logger?->error('Redis command failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'process_id' => $this->processId
+            ]);
             throw $e;
         }
     }
@@ -301,9 +341,31 @@ final class RedisAdapter implements AdapterInterface
     public function close(): void
     {
         if ($this->redis) {
-            $this->redis->close();
+            try {
+                $this->redis->close();
+            } catch (\Exception $e) {
+                $this->logger?->warning('Failed to close redis connection', [
+                    'error' => $e->getMessage(),
+                    'process_id' => $this->processId
+                ]);
+            }
+        }
+        if ($this->subscriber) {
+            try {
+                $this->subscriber->close();
+            } catch (\Exception $e) {
+                $this->logger?->warning('Failed to close redis subscriber connection', [
+                    'error' => $e->getMessage(),
+                    'process_id' => $this->processId
+                ]);
+            }
         }
         $this->initialized = false;
+    }
+
+    public function setLogger(LoggerInterface $logger): void
+    {
+        $this->logger = $logger;
     }
 
     private function sendToLocalRoom(string $room, array $packet): void
@@ -347,28 +409,41 @@ final class RedisAdapter implements AdapterInterface
         $redisClientClass = $this->getRedisClientClass();
         $redisUrl = "redis://{$this->config['host']}:{$this->config['port']}";
 
-        $this->subscriber = new $redisClientClass($redisUrl, ['connect_timeout' => 10]);
+        try {
+            $this->subscriber = new $redisClientClass($redisUrl, ['connect_timeout' => 10]);
 
-        if ($this->config['auth']) {
-            $this->subscriber->auth($this->config['auth']);
-        }
+            if ($this->config['auth']) {
+                $this->subscriber->auth($this->config['auth']);
+            }
 
-        $this->subscriber->select($this->config['db']);
+            $this->subscriber->select($this->config['db']);
 
-        $channels = [
-            $this->prefix . 'broadcast',
-            $this->prefix . 'room',
-            $this->prefix . 'send',
-            $this->prefix . 'member'
-        ];
+            $channels = [
+                $this->prefix . 'broadcast',
+                $this->prefix . 'room',
+                $this->prefix . 'send',
+                $this->prefix . 'member'
+            ];
 
-        $adapter = $this;
-        $processId = $this->processId;
+            $adapter = $this;
+            $processId = $this->processId;
 
-        foreach ($channels as $channel) {
-            $this->subscriber->subscribe($channel, function($channel, $message) use ($adapter, $processId): void {
-                $adapter->handleRedisMessage($channel, $message, $processId);
-            });
+            foreach ($channels as $channel) {
+                $this->subscriber->subscribe($channel, function($channel, $message) use ($adapter, $processId): void {
+                    $adapter->handleRedisMessage($channel, $message, $processId);
+                });
+            }
+            $this->logger?->info('Redis subscriber connected and subscribed to channels', [
+                'channels' => $channels,
+                'process_id' => $this->processId
+            ]);
+        } catch (\Exception $e) {
+            $this->logger?->error('Failed to subscribe to redis channels', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'process_id' => $this->processId
+            ]);
+            throw new \RuntimeException('Failed to subscribe to redis channels', 0, $e);
         }
     }
 
@@ -377,6 +452,11 @@ final class RedisAdapter implements AdapterInterface
         try {
             $data = json_decode($message, true);
             if (!$data) {
+                $this->logger?->warning('Received invalid JSON message from Redis', [
+                    'channel' => $channel,
+                    'message' => substr($message, 0, 100),
+                    'process_id' => $this->processId
+                ]);
                 return;
             }
 
@@ -391,7 +471,14 @@ final class RedisAdapter implements AdapterInterface
                 $this->prefix . 'member' => $this->handleMemberMessage($data),
                 default => null
             };
-        } catch (\Exception) {
+        } catch (\Exception $e) {
+            $this->logger?->error('Failed to handle redis message', [
+                'channel' => $channel,
+                'message' => substr($message, 0, 100),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'process_id' => $this->processId
+            ]);
         }
     }
 

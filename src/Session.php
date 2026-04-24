@@ -216,7 +216,8 @@ final class Session
         
         try {
             return $session->send($engineIoPacket);
-        } catch (\Exception) {
+        } catch (\Exception $e) {
+            error_log('Session::sendToAll failed: ' . $e->getMessage() . ' for sid: ' . $session->sid);
             return false;
         }
     }
@@ -257,7 +258,8 @@ final class Session
         if ($this->connection && is_object($this->connection) && method_exists($this->connection, 'close')) {
             try {
                 $this->connection->close();
-            } catch (\Exception) {
+            } catch (\Exception $e) {
+                error_log('Session::close failed: ' . $e->getMessage() . ' for sid: ' . $this->sid);
             }
         }
 

@@ -251,6 +251,11 @@ class EngineIOHandler
                 $session->lastPing = $now;
                 return ['status' => 'ping-sent', 'session' => $session];
             } catch (Exception $e) {
+                $this->logger->error('Failed to send ping', [
+                    'sid' => $session->sid,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
                 return ['status' => 'error', 'session' => $session, 'error' => $e->getMessage()];
             }
         }
@@ -360,6 +365,11 @@ class EngineIOHandler
                 try {
                     $session->connection->close();
                 } catch (Exception $e) {
+                    $this->logger->error('Failed to close connection', [
+                        'sid' => $session->sid,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString()
+                    ]);
                 }
             }
         }

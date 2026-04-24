@@ -14,6 +14,7 @@ final class HttpRequestHandler
     private ServerManager $serverManager;
     private PollingHandler $pollingHandler;
     private EngineIOHandler $engineIoHandler;
+    private Logger $logger;
     
     /** @var array<int, string> 有效的引擎IO数据包起始字符 */
     private const VALID_PACKET_CHARS = ['0', '1', '2', '3', '4', '5', '6', 'b'];
@@ -26,6 +27,7 @@ final class HttpRequestHandler
         $this->serverManager = $serverManager;
         $this->pollingHandler = $pollingHandler;
         $this->engineIoHandler = $engineIoHandler;
+        $this->logger = $serverManager->getLogger();
     }
 
     public function handleMessage(\Workerman\Connection\TcpConnection $connection, mixed $req): void
@@ -114,7 +116,12 @@ final class HttpRequestHandler
                 $this->engineIoHandler->sendHandshake($connection, $session);
             }, [], false);
 
-        } catch (\Exception) {
+        } catch (\Exception $e) {
+            $this->logger->error('WebSocket handshake failed', [
+                'remote_address' => $connection->getRemoteAddress(),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             $connection->close();
         }
     }
@@ -201,17 +208,28 @@ final class HttpRequestHandler
             $connection->websocketType = $isBinary ? "\x82" : "\x81";
             $connection->send($data);
             return true;
-        } catch (\Exception) {
+        } catch (\Exception $e) {
+            $this->logger->error('Failed to send WebSocket frame', [
+                'sid' => $connection->sid ?? 'unknown',
+                'is_binary' => $isBinary,
+                'data_length' => strlen($data),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return false;
         }
     }
 
-    public static function isConnectionValid(\Workerman\Connection\TcpConnection $connection): bool
+    public function isConnectionValid(\Workerman\Connection\TcpConnection $connection): bool
     {
         try {
             $status = $connection->getStatus();
             return $status !== null && $status !== 'closed' && $status !== 'closing';
-        } catch (\Exception) {
+        } catch (\Exception $e) {
+            $this->logger->debug('Failed to check connection status', [
+                'remote_address' => $connection->getRemoteAddress(),
+                'error' => $e->getMessage()
+            ]);
             return false;
         }
     }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PhpSocketIO;
 
 use Workerman\Connection\TcpConnection;
+use Psr\Log\LoggerInterface;
 
 /**
  * Socket类 - 封装Socket.IO客户端连接接口
@@ -24,6 +25,7 @@ class Socket
     public array $data = [];    // 任意数据对象 (v4.0.0+)
 
     private ?Broadcaster $_broadcaster = null; // 内部广播器实例
+    private ?LoggerInterface $logger = null; // 日志记录器
 
     /**
      * 魔术方法，保持兼容性
@@ -52,6 +54,11 @@ class Socket
         $this->connection = $connection;
         $this->session = Session::get($sid);
         
+        // 初始化日志记录器
+        if ($this->server && method_exists($this->server, 'getLogger')) {
+            $this->logger = $this->server->getLogger();
+        }
+        
         // 从session中获取握手信息和data
         if ($this->session) {
             $this->handshake = $this->session->handshake;
@@ -68,18 +75,31 @@ class Socket
     public function emit(string $event, mixed ...$args): self
     {
         if (empty($event)) {
+            $this->logger?->error('事件名称不能为空');
             throw new \InvalidArgumentException("事件名称不能为空");
         }
         
         // 验证事件名称格式，只允许字母、数字、下划线和点
         if (!preg_match('/^[a-zA-Z0-9_.]+$/', $event)) {
+            $this->logger?->error('事件名称格式无效', ['event' => $event]);
             throw new \InvalidArgumentException("事件名称格式无效");
         }
         
-        // 检查是否包含二进制数据并发送
-        return $this->hasBinaryData($args)
-            ? $this->emitBinary($event, ...$args)
-            : $this->sendStandardEvent($event, ...$args);
+        try {
+            // 检查是否包含二进制数据并发送
+            return $this->hasBinaryData($args)
+                ? $this->emitBinary($event, ...$args)
+                : $this->sendStandardEvent($event, ...$args);
+        } catch (\Exception $e) {
+            $this->logger?->error('发送事件失败', [
+                'event' => $event,
+                'sid' => $this->sid,
+                'namespace' => $this->namespace,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
     }
     
     /**
@@ -87,9 +107,18 @@ class Socket
      */
     private function sendStandardEvent(string $event, mixed ...$args): self
     {
-        $packetData = $this->buildEventPacket($event, $args);
-        $this->send($packetData, $event);
-        return $this;
+        try {
+            $packetData = $this->buildEventPacket($event, $args);
+            $this->send($packetData, $event);
+            return $this;
+        } catch (\Exception $e) {
+            $this->logger?->error('发送标准事件失败', [
+                'event' => $event,
+                'sid' => $this->sid,
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
+        }
     }
     
     /**
@@ -111,28 +140,39 @@ class Socket
     public function emitBinary(string $event, mixed ...$args): self
     {
         if (empty($event)) {
+            $this->logger?->error('事件名称不能为空');
             throw new \InvalidArgumentException("事件名称不能为空");
         }
-        // 收集二进制附件并替换为占位符
-        [$binaryAttachments, $processedArgs] = $this->processBinaryData($args);
-        // 使用PacketParser构建二进制事件包
-        $binaryCount = count($binaryAttachments);
-        $socketIOPacket = PacketParser::buildSocketIOPacket('BINARY_EVENT', [
-            'namespace' => $this->namespace,
-            'binaryCount' => $binaryCount,
-            'event' => $event,
-            'data' => $processedArgs
-        ]);
-        
-        if ($this->session) {
-            // 发送文本包（包含占位符）
-            $this->session->send('4' . $socketIOPacket);
+        try {
+            // 收集二进制附件并替换为占位符
+            [$binaryAttachments, $processedArgs] = $this->processBinaryData($args);
+            // 使用PacketParser构建二进制事件包
+            $binaryCount = count($binaryAttachments);
+            $socketIOPacket = PacketParser::buildSocketIOPacket('BINARY_EVENT', [
+                'namespace' => $this->namespace,
+                'binaryCount' => $binaryCount,
+                'event' => $event,
+                'data' => $processedArgs
+            ]);
             
-            // 发送二进制附件
-            $this->sendBinaryData($binaryAttachments);
+            if ($this->session) {
+                // 发送文本包（包含占位符）
+                $this->session->send('4' . $socketIOPacket);
+                
+                // 发送二进制附件
+                $this->sendBinaryData($binaryAttachments);
+            }
+            
+            return $this;
+        } catch (\Exception $e) {
+            $this->logger?->error('发送二进制事件失败', [
+                'event' => $event,
+                'sid' => $this->sid,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
         }
-        
-        return $this;
     }
     
     /**

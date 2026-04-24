@@ -270,7 +270,11 @@ class EventHandler
                 try {
                     $adapter->register($socket['id']);
                 } catch (\Exception $e) {
-                    // 静默处理注册失败
+                    $this->logger?->error('Failed to register socket in adapter', [
+                        'socket_id' => $socket['id'],
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString()
+                    ]);
                 }
             }
             
@@ -348,7 +352,11 @@ class EventHandler
             try {
                 $adapter->unregister($socketId);
             } catch (\Exception $e) {
-                // 静默处理注销失败
+                $this->logger?->error('Failed to unregister socket in adapter', [
+                    'socket_id' => $socketId,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
             }
         }
         
@@ -510,6 +518,10 @@ class EventHandler
                 return true;
                 
             } catch (ReflectionException $e) {
+                $this->logger?->debug('Reflection failed for ACK callback, using fallback strategy', [
+                    'ack_id' => $ackId,
+                    'error' => $e->getMessage()
+                ]);
                 // 备用策略：直接传递ACK数据
                 call_user_func($callback, $ackData);
                 $this->removeAckCallback($callbackKey, $ackId);
@@ -673,7 +685,11 @@ class EventHandler
         try {
             $session->send($message);
         } catch (\Exception $e) {
-            // 静默处理发送失败
+            $this->logger?->error('Failed to send WebSocket message', [
+                'sid' => $session->sid ?? 'unknown',
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
         }
     }
 
@@ -750,6 +766,11 @@ class EventHandler
                 $this->removeAckCallback($callbackKey, $ackId);
                 return true;
             } catch (\Exception $e) {
+                $this->logger?->error('Failed to execute ACK callback', [
+                    'ack_id' => $ackId,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
                 return false;
             }
         }

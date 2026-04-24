@@ -95,7 +95,14 @@ final class RoomManager
             if ($adapter) {
                 try {
                     return $adapter->clients($room);
-                } catch (\Exception) {
+                } catch (\Exception $e) {
+                    if ($this->server && method_exists($this->server, 'getLogger')) {
+                        $this->server->getLogger()?->error('Failed to get room members from adapter', [
+                            'room' => $room,
+                            'error' => $e->getMessage(),
+                            'trace' => $e->getTraceAsString()
+                        ]);
+                    }
                 }
             }
         }

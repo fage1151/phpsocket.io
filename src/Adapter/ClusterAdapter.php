@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace PhpSocketIO\Adapter;
 
+use Psr\Log\LoggerInterface;
+
 final class ClusterAdapter implements AdapterInterface
 {
     private array $config;
@@ -17,6 +19,7 @@ final class ClusterAdapter implements AdapterInterface
     private bool $batchTimerStarted = false;
     private int $maxBatchSize = 50;
     private float $batchInterval = 0.1;
+    private ?LoggerInterface $logger = null;
 
     private const VALID_PACKET_TYPES = [0, 1, 2, 3, 4, 5, 6];
 
@@ -58,7 +61,18 @@ final class ClusterAdapter implements AdapterInterface
 
         try {
             $channelClientClass::connect($this->config['channel_ip'], $this->config['channel_port']);
+            $this->logger?->info('Channel client connected successfully', [
+                'channel_ip' => $this->config['channel_ip'],
+                'channel_port' => $this->config['channel_port'],
+                'process_id' => $this->processId
+            ]);
         } catch (\Exception $e) {
+            $this->logger?->error('Failed to initialize channel client', [
+                'channel_ip' => $this->config['channel_ip'],
+                'channel_port' => $this->config['channel_port'],
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             throw new \RuntimeException('Failed to initialize channel client', 0, $e);
         }
 
@@ -85,6 +99,10 @@ final class ClusterAdapter implements AdapterInterface
                     'time' => time()
                 ], true);
             } catch (\Exception $e) {
+                $this->logger?->warning('Failed to send heartbeat, trying to reconnect', [
+                    'error' => $e->getMessage(),
+                    'process_id' => $this->processId
+                ]);
                 $this->initChannelClient();
             }
         });
@@ -606,6 +624,11 @@ final class ClusterAdapter implements AdapterInterface
         $this->initialized = false;
     }
 
+    public function setLogger(LoggerInterface $logger): void
+    {
+        $this->logger = $logger;
+    }
+
     public function getStats(): array
     {
         return [
@@ -629,10 +652,20 @@ final class ClusterAdapter implements AdapterInterface
                 $channelClientClass::publish($channel, $data);
                 return;
             } catch (\Exception $e) {
+                $this->logger?->warning('Failed to publish urgent message, trying to reconnect', [
+                    'channel' => $channel,
+                    'error' => $e->getMessage(),
+                    'process_id' => $this->processId
+                ]);
                 $this->initChannelClient();
                 try {
                     $channelClientClass::publish($channel, $data);
-                } catch (\Exception) {
+                } catch (\Exception $e2) {
+                    $this->logger?->error('Failed to publish urgent message after reconnect', [
+                        'channel' => $channel,
+                        'error' => $e2->getMessage(),
+                        'process_id' => $this->processId
+                    ]);
                 }
                 return;
             }
@@ -688,6 +721,11 @@ final class ClusterAdapter implements AdapterInterface
                 $channelClientClass::publish($message['channel'], $message['data']);
             }
         } catch (\Exception $e) {
+            $this->logger?->warning('Failed to flush message queue, trying to reconnect', [
+                'error' => $e->getMessage(),
+                'queue_size' => count($messages),
+                'process_id' => $this->processId
+            ]);
             $this->initChannelClient();
             $this->messageQueue = array_merge($messages, $this->messageQueue);
         }

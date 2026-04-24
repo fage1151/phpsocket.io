@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace PhpSocketIO\Adapter;
 
+use Psr\Log\LoggerInterface;
+
 /**
  * Socket.IO 跨进程适配器接口
  * 支持跨进程/集群间的Socket.IO消息传递
@@ -79,4 +81,10 @@ interface AdapterInterface
      * 关闭适配器
      */
     public function close(): void;
+    
+    /**
+     * 设置日志记录器
+     * @param LoggerInterface $logger 日志记录器
+     */
+    public function setLogger(LoggerInterface $logger): void;
 }
