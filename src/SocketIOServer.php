@@ -32,6 +32,7 @@ class SocketIOServer
     private ?string $listenAddress = null;
     private ?int $listenPort = null;
     private array $listenContext = [];
+    private array $namespaces = [];
 
     public function __construct(string $listen, array $options = [])
     {
@@ -127,8 +128,10 @@ class SocketIOServer
         return $this->serverManager->isClusterEnabled();
     }
 
-    public function on(string $event, callable $handler, string $namespace = '/', string $type = '@EVENT_HANDLER'): self
+    public function on(string $event, callable $handler): self
     {
+        // 默认只处理根命名空间 /
+        $namespace = '/';
         if ($event === 'connection') {
             if (!isset($this->namespaceHandlers[$namespace])) {
                 $this->namespaceHandlers[$namespace] = [];
@@ -351,21 +354,42 @@ class SocketIOServer
     
     private function processPacketByType(string $type, mixed $connection, Session $session, string $namespace, mixed $data, array $packet): void
     {
-        match ($type) {
-            'CONNECT' => $this->handleConnectPacket($connection, $session, $namespace, $data),
-            'DISCONNECT' => $this->handleDisconnectPacket($connection, $session, $namespace),
-            'EVENT', 'BINARY_EVENT' => $this->handleEventPacket(
-                $connection, 
-                $session, 
-                $namespace, 
-                $packet['event'] ?? 'unknown',
-                $packet['data'] ?? (is_array($data) ? $data : [$data]),
-                $packet['id'] ?? null
-            ),
-            'ACK', 'BINARY_ACK' => $this->handleAckPacket($connection, $session, $namespace, $data, $packet['id'] ?? null),
-            'ERROR' => $this->handleErrorPacket($connection, $session, $namespace, $data),
-            default => null,
-        };
+        // 构建 socket 信息数组，用于中间件
+        $socket = [
+            'id' => $session->sid,
+            'namespace' => $namespace,
+            'session' => $session,
+            'connection' => $connection,
+        ];
+        
+        // 构建完整的 packet 信息
+        $fullPacket = [
+            ...$packet,
+            'namespace' => $namespace,
+            'data' => $data,
+            'type' => $type,
+        ];
+        
+        // 通过 EventHandler 处理，让中间件能够执行
+        // 然后回调原来的处理逻辑
+        $this->eventHandler->handlePacket($fullPacket, $socket, function(array $socket, array $packet) use ($type, $connection, $session, $namespace, $data) {
+            // 直接使用 match 处理，不重复触发
+            match ($type) {
+                'CONNECT' => $this->handleConnectPacket($connection, $session, $namespace, $data),
+                'DISCONNECT' => $this->handleDisconnectPacket($connection, $session, $namespace),
+                'EVENT', 'BINARY_EVENT' => $this->handleEventPacket(
+                    $connection, 
+                    $session, 
+                    $namespace, 
+                    $packet['event'] ?? 'unknown',
+                    $packet['data'] ?? (is_array($data) ? $data : [$data]),
+                    $packet['id'] ?? null
+                ),
+                'ACK', 'BINARY_ACK' => $this->handleAckPacket($connection, $session, $namespace, $data, $packet['id'] ?? null),
+                'ERROR' => $this->handleErrorPacket($connection, $session, $namespace, $data),
+                default => null,
+            };
+        });
     }
     
     private function handleSocketIOBinaryMessage(string $binaryData, mixed $connection, Session $session): void
@@ -590,7 +614,7 @@ class SocketIOServer
         }
     }
     
-    private function getOrCreateSocket(Session $session, string $namespace): Socket
+    public function getOrCreateSocket(Session $session, string $namespace): Socket
     {
         $sessionKey = "{$session->sid}:{$namespace}";
         return $this->sessionSocketMap[$sessionKey] ??= new Socket($session->sid, $namespace, $this);
@@ -605,9 +629,21 @@ class SocketIOServer
     
     private function processEvent(Session $session, string $namespace, string $eventName, array $eventArgs, Socket $socket, ?int $ackId): void
     {
-        if (!$this->eventHandler->triggerEventWithAck($session, $namespace, $eventName, $eventArgs, $ackId)) {
-            $this->processEventHandlers($session, $namespace, $eventName, $eventArgs, $socket, $ackId);
-        }
+        // 构建事件数据包信息，用于 Socket 中间件
+        $packet = [
+            'type' => 'EVENT',
+            'namespace' => $namespace,
+            'event' => $eventName,
+            'data' => $eventArgs,
+            'id' => $ackId
+        ];
+
+        // 执行 Socket 实例的中间件链，然后处理事件
+        $socket->runMiddlewares($packet, function () use ($session, $namespace, $eventName, $eventArgs, $socket, $ackId) {
+            if (!$this->eventHandler->triggerEventWithAck($session, $namespace, $eventName, $eventArgs, $ackId)) {
+                $this->processEventHandlers($session, $namespace, $eventName, $eventArgs, $socket, $ackId);
+            }
+        });
     }
     
     private function handleAckPacket(mixed $connection, Session $session, string $namespace, mixed $data, ?int $ackId = null): void
@@ -657,32 +693,36 @@ class SocketIOServer
             }
             
             if ($handler) {
+                // 构建ACK回调函数
+                $ackCallback = null;
+                if ($ackId !== null) {
+                    $ackCallback = function(mixed ...$data) use ($session, $namespace, $ackId): void {
+                        if (count($data) === 1) {
+                            $this->eventHandler->sendAck([
+                                'id' => $session->sid,
+                                'session' => $session,
+                                'namespace' => $namespace
+                            ], $namespace, $ackId, $data[0]);
+                        } else {
+                            $this->eventHandler->sendAck([
+                                'id' => $session->sid,
+                                'session' => $session,
+                                'namespace' => $namespace
+                            ], $namespace, $ackId, $data);
+                        }
+                    };
+                }
+                
+                // 构建事件处理器参数
                 $callArgs = EventHandler::buildHandlerArguments($handler, [
                     'id' => $session->sid,
                     'session' => $session,
                     'namespace' => $namespace,
                     'socket' => $socket
-                ], $eventArgs, $namespace);
+                ], $eventArgs, $namespace, $ackId, $ackCallback);
                 
-                if ($ackId !== null) {
-                    $callArgs[] = function(mixed $data) use ($session, $namespace, $ackId): void {
-                        $this->eventHandler->sendAck([
-                            'id' => $session->sid,
-                            'session' => $session,
-                            'namespace' => $namespace
-                        ], $namespace, $ackId, $data);
-                    };
-                }
-                
-                $result = call_user_func_array($handler, $callArgs);
-                
-                if ($ackId !== null && $result !== null) {
-                    $this->eventHandler->sendAck([
-                        'id' => $session->sid,
-                        'session' => $session,
-                        'namespace' => $namespace
-                    ], $namespace, $ackId, $result);
-                }
+                // 调用处理器（不再根据return值自动发送ACK）
+                call_user_func_array($handler, $callArgs);
                 
                 $foundHandler = true;
             }
@@ -728,9 +768,9 @@ class SocketIOServer
         return $this;
     }
 
-    public function use(callable $middleware, string $namespace = '/'): self
+    public function use(callable $middleware): self
     {
-        $this->middlewareHandler->use($middleware, $namespace);
+        $this->eventHandler->use($middleware);
         return $this;
     }
     
@@ -742,6 +782,17 @@ class SocketIOServer
     public function getEventHandler(): EventHandler
     {
         return $this->eventHandler;
+    }
+
+    /**
+     * 注册特定命名空间的连接事件处理器
+     */
+    public function registerConnectionHandlerForNamespace(string $namespace, callable $handler): void
+    {
+        if (!isset($this->namespaceHandlers[$namespace])) {
+            $this->namespaceHandlers[$namespace] = [];
+        }
+        $this->namespaceHandlers[$namespace]['connection'] = $handler;
     }
     
     public function getServerManager(): ServerManager
@@ -798,9 +849,13 @@ class SocketIOServer
         return $socket;
     }
     
-    public function of(string $namespace = '/'): Broadcaster
+    public function of(string $namespace = '/'): SocketNamespace
     {
-        return new Broadcaster($this, $namespace);
+        // 缓存命名空间实例
+        if (!isset($this->namespaces[$namespace])) {
+            $this->namespaces[$namespace] = new SocketNamespace($namespace, $this);
+        }
+        return $this->namespaces[$namespace];
     }
     
 }

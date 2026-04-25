@@ -26,6 +26,7 @@ class Socket
 
     private ?Broadcaster $_broadcaster = null; // 内部广播器实例
     private ?LoggerInterface $logger = null; // 日志记录器
+    private array $middlewares = []; // Socket 实例级别的中间件
 
     /**
      * 魔术方法，保持兼容性
@@ -319,6 +320,49 @@ class Socket
     }
 
     /**
+     * 注册 Socket 实例级别的中间件
+     * 
+     * @param callable $middleware 中间件函数，格式: function([$packet], $next) { ... }
+     * @return self
+     */
+    public function use(callable $middleware): self
+    {
+        $this->middlewares[] = $middleware;
+        return $this;
+    }
+
+    /**
+     * 执行 Socket 实例级别的中间件链
+     * 
+     * @param array $packet 数据包信息
+     * @param callable $finalHandler 最终处理回调
+     * @return mixed
+     */
+    public function runMiddlewares(array $packet, callable $finalHandler): mixed
+    {
+        $middlewares = $this->middlewares;
+        
+        // 如果没有中间件，直接执行
+        if (empty($middlewares)) {
+            return $finalHandler();
+        }
+        
+        // 构建中间件链
+        $currentCallback = $finalHandler;
+        
+        for ($i = count($middlewares) - 1; $i >= 0; $i--) {
+            $middleware = $middlewares[$i];
+            $nextCallback = $currentCallback;
+            
+            $currentCallback = function () use ($middleware, $packet, $nextCallback) {
+                return $middleware($packet, $nextCallback);
+            };
+        }
+        
+        return $currentCallback();
+    }
+
+    /**
      * 注册事件监听器 (Socket.IO v4标准接口)
      */
     public function on(string $event, callable $callback): self
@@ -327,8 +371,8 @@ class Socket
             throw new \RuntimeException("Socket实例未关联到服务器");
         }
         
-        // 只注册到EventHandler，避免重复
-        $this->server->on($event, $callback, $this->namespace);
+        // 直接注册到 EventHandler，使用正确的命名空间
+        $this->server->getEventHandler()->on($event, $callback, $this->namespace);
         
         return $this;
     }

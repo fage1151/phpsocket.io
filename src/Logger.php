@@ -96,7 +96,19 @@ final class Logger extends AbstractLogger
         if (is_object($value) && method_exists($value, '__toString')) {
             return (string)$value;
         }
-        return is_array($value) || is_object($value) ? json_encode($value) : (string)$value;
+        
+        if (is_array($value) || is_object($value)) {
+            $encoded = json_encode($value);
+            // 如果 json_encode 失败，返回一个安全的字符串
+            return $encoded !== false ? $encoded : '[不可序列化的对象]';
+        }
+        
+        // 处理布尔值和其他标量类型
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+        
+        return (string)$value;
     }
 
     private function defaultHandler(string $message): void
