@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace PhpSocketIO;
 
+use Psr\Log\LoggerInterface;
+
 /**
  * Socket.IO 会话管理类 - PHP 8.1+ 深度优化版本
  *
@@ -18,6 +20,7 @@ final class Session
     private static array $sessions = [];
     private static array $cache = [];
     private static array $cacheAccess = [];
+    private static ?LoggerInterface $logger = null;
 
     public readonly string $sid;
     public string $transport = 'polling';
@@ -39,6 +42,11 @@ final class Session
     public mixed $pendingBinaryPlaceholder = null;
     public int $pendingBinaryCount = 0;
     public int $ackIdCounter = 0;
+    
+    public static function setLogger(LoggerInterface $logger): void
+    {
+        self::$logger = $logger;
+    }
 
     public function __construct(string $sid)
     {
@@ -132,19 +140,22 @@ final class Session
             
             // 否则直接通过 WebSocket 发送
             try {
-                $result = HttpRequestHandler::sendWsFrame($this->connection, $packet, false);
+                $result = HttpRequestHandler::sendWsFrame($this->connection, $packet, false, self::$logger);
                 // 如果是从轮询升级来的，发送成功后标记为升级完成
                 if ($this->isPollingUpgrade && !$this->upgraded) {
                     $this->upgraded = true;
                 }
                 return $result;
             } catch (\Exception $e) {
-                error_log('Session::send WebSocket 发送失败: ' . $e->getMessage());
+                self::$logger?->error('Session::send WebSocket 发送失败', [
+                    'sid' => $this->sid,
+                    'error' => $e->getMessage()
+                ]);
                 return false;
             }
         }
 
-        $this->enqueue($packet);
+        $this->enqueue($packet);                  
         return true;
     }
 

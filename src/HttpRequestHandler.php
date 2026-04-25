@@ -204,7 +204,7 @@ final class HttpRequestHandler
             . "Access-Control-Allow-Origin: *\r\n\r\n";
     }
 
-    public function sendWsFrame(\Workerman\Connection\TcpConnection $connection, string $data, bool $isBinary = false): bool
+    public static function sendWsFrame(\Workerman\Connection\TcpConnection $connection, string $data, bool $isBinary = false, ?\Psr\Log\LoggerInterface $logger = null): bool
     {
         if (!isset($connection->isWs) || !$connection->isWs) {
             return false;
@@ -215,7 +215,7 @@ final class HttpRequestHandler
             $connection->send($data);
             return true;
         } catch (\Exception $e) {
-            $this->logger?->error('Failed to send WebSocket frame', [
+            $logger?->error('Failed to send WebSocket frame', [
                 'sid' => $connection->sid ?? 'unknown',
                 'is_binary' => $isBinary,
                 'data_length' => strlen($data),
