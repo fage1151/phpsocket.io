@@ -61,6 +61,8 @@ class SocketIOServer
     {
         $this->engineIoHandler->setLogger($this->logger);
         $this->eventHandler->setLogger($this->logger);
+        $this->pollingHandler->setLogger($this->logger);
+        $this->httpRequestHandler->setLogger($this->logger);
         $this->engineIoHandler->setEventHandler($this->eventHandler);
         $this->engineIoHandler->setRoomManager($this->roomManager);
         $this->roomManager->setServer($this);

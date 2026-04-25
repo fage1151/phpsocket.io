@@ -4,17 +4,23 @@ declare(strict_types=1);
 
 namespace PhpSocketIO;
 
+use Psr\Log\LoggerInterface;
+
 final class PollingHandler
 {
     private ServerManager $serverManager;
     private EngineIOHandler $engineIoHandler;
-    private Logger $logger;
+    private ?LoggerInterface $logger = null;
 
     public function __construct(ServerManager $serverManager, EngineIOHandler $engineIoHandler)
     {
         $this->serverManager = $serverManager;
         $this->engineIoHandler = $engineIoHandler;
-        $this->logger = $serverManager->getLogger();
+    }
+    
+    public function setLogger(LoggerInterface $logger): void
+    {
+        $this->logger = $logger;
     }
 
     public function handlePolling(\Workerman\Connection\TcpConnection $connection, mixed $req): void
@@ -117,7 +123,7 @@ final class PollingHandler
             $this->processPollingData($session, $body);
             $this->sendHttpResponse($connection, 200, [], 'ok');
         } catch (\Exception $e) {
-            $this->logger->error('Polling data processing failed', [
+            $this->logger?->error('Polling data processing failed', [
                 'sid' => $session->sid,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()

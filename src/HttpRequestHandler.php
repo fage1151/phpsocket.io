@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace PhpSocketIO;
 
+use Psr\Log\LoggerInterface;
+
 /**
  * Socket.IO HTTP 请求处理器
  * 处理 WebSocket 握手、轮询请求等
@@ -14,7 +16,7 @@ final class HttpRequestHandler
     private ServerManager $serverManager;
     private PollingHandler $pollingHandler;
     private EngineIOHandler $engineIoHandler;
-    private Logger $logger;
+    private ?LoggerInterface $logger = null;
     
     /** @var array<int, string> 有效的引擎IO数据包起始字符 */
     private const VALID_PACKET_CHARS = ['0', '1', '2', '3', '4', '5', '6', 'b'];
@@ -27,7 +29,11 @@ final class HttpRequestHandler
         $this->serverManager = $serverManager;
         $this->pollingHandler = $pollingHandler;
         $this->engineIoHandler = $engineIoHandler;
-        $this->logger = $serverManager->getLogger();
+    }
+    
+    public function setLogger(LoggerInterface $logger): void
+    {
+        $this->logger = $logger;
     }
 
     public function handleMessage(\Workerman\Connection\TcpConnection $connection, mixed $req): void
@@ -117,7 +123,7 @@ final class HttpRequestHandler
             }, [], false);
 
         } catch (\Exception $e) {
-            $this->logger->error('WebSocket handshake failed', [
+            $this->logger?->error('WebSocket handshake failed', [
                 'remote_address' => $connection->getRemoteAddress(),
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -198,7 +204,7 @@ final class HttpRequestHandler
             . "Access-Control-Allow-Origin: *\r\n\r\n";
     }
 
-    public static function sendWsFrame(\Workerman\Connection\TcpConnection $connection, string $data, bool $isBinary = false): bool
+    public function sendWsFrame(\Workerman\Connection\TcpConnection $connection, string $data, bool $isBinary = false): bool
     {
         if (!isset($connection->isWs) || !$connection->isWs) {
             return false;
@@ -209,7 +215,7 @@ final class HttpRequestHandler
             $connection->send($data);
             return true;
         } catch (\Exception $e) {
-            $this->logger->error('Failed to send WebSocket frame', [
+            $this->logger?->error('Failed to send WebSocket frame', [
                 'sid' => $connection->sid ?? 'unknown',
                 'is_binary' => $isBinary,
                 'data_length' => strlen($data),
@@ -226,7 +232,7 @@ final class HttpRequestHandler
             $status = $connection->getStatus();
             return $status !== null && $status !== 'closed' && $status !== 'closing';
         } catch (\Exception $e) {
-            $this->logger->debug('Failed to check connection status', [
+            $this->logger?->debug('Failed to check connection status', [
                 'remote_address' => $connection->getRemoteAddress(),
                 'error' => $e->getMessage()
             ]);
