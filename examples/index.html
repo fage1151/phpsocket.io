@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Socket.IO Test</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 3px;
+        }
+        .input-group {
+            margin-top: 20px;
+        }
+        input {
+            padding: 10px;
+            width: 70%;
+            margin-right: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0069d9;
+        }
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .test-section {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .success { color: green; }
+        .error { color: red; }
+        .warning { color: orange; }
+    </style>
+</head>
+<body>
+    <h1>Socket.IO v4 Test</h1>
+    
+    <div class="container">
+        <h2>Connection Status</h2>
+        <div id="status">Disconnected</div>
+    </div>
+    
+    <div class="container">
+        <h2>Messages</h2>
+        <div id="messages"></div>
+    </div>
+    
+    <div class="container">
+        <h2>Send Message</h2>
+        <div class="input-group">
+            <input type="text" id="messageInput" placeholder="Enter message">
+            <button id="sendBtn">Send</button>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h2>Connection Control Tests</h2>
+        <div class="test-section">
+            <h3>Manual Connection Control</h3>
+            <div class="button-group">
+                <button id="disconnectBtn" style="background: #dc3545;">Disconnect</button>
+                <button id="connectBtn" style="background: #28a745;">Reconnect</button>
+                <button id="namespaceBtn" style="background: #17a2b8;">Connect to /test Namespace</button>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Connection State Tests</h3>
+            <div class="button-group">
+                <button id="testConnectionState">Test Connection State</button>
+                <button id="pingServer">Send Ping</button>
+                <button id="checkReconnection">Test Auto Reconnect</button>
+            </div>
+            <div class="button-group">
+                <button id="disconnectWithReason">Disconnect with Reason</button>
+                <input type="text" id="disconnectReason" placeholder="Disconnect reason" style="width: 200px;" value="Client test">
+            </div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h2>ACK Callback Tests</h2>
+        <div class="test-section">
+            <h3>Basic ACK Tests</h3>
+            <div class="button-group">
+                <button id="ackWithString">Send ACK with String</button>
+                <button id="ackWithObject">Send ACK with Object</button>
+                <button id="ackWithArray">Send ACK with Array</button>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Advanced ACK Tests</h3>
+            <div class="button-group">
+                <button id="ackTimeout">Send ACK with Timeout</button>
+                <input type="number" id="timeoutValue" placeholder="Timeout (ms)" value="3000" style="width: 150px;">
+                <button id="ackMultiple">Multiple ACK Callbacks</button>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Server-to-Client ACK</h3>
+            <div class="button-group">
+                <button id="requestServerAck">Request Server ACK</button>
+                <button id="twoWayAck">Two-way ACK Communication</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h2>Binary Data Tests</h2>
+        <div class="test-section">
+            <h3>File Upload Test</h3>
+            <div class="input-group">
+                <input type="file" id="fileInput">
+                <button id="sendFile">Send File as Binary</button>
+                <span id="fileInfo" style="color: #666; font-size: 12px;"></span>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Binary ArrayBuffer Test</h3>
+            <div class="button-group">
+                <button id="sendBuffer">Send ArrayBuffer</button>
+                <button id="sendTypedArray">Send TypedArray</button>
+                <button id="sendBlob">Send Blob</button>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Binary Event Test</h3>
+            <div class="button-group">
+                <button id="sendBinaryEvent">Send Binary Event</button>
+                <button id="requestBinary">Request Binary from Server</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h2>Custom Event</h2>
+        <div class="input-group">
+            <input type="text" id="customInput" placeholder="Enter data">
+            <button id="customBtn">Send Custom Event</button>
+        </div>
+    </div>
+
+    <script>
+        // 连接到Socket.IO服务器
+        const socket = io('http://localhost:8088/chat',{
+            autoConnect: true,
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+            timeout: 20000,
+            //transports: ['websocket'] // 强制使用 WebSocket 传输协议
+            transports: ['polling', 'websocket'] // 强制使用 WebSocket 传输协议
+        });
+        
+        // 连接成功
+        socket.on('connect', () => {
+            document.getElementById('status').textContent = 'Connected';
+            document.getElementById('status').style.color = 'green';
+            addMessage('System', 'Connected to server');
+        });
+        
+        // 连接断开
+        socket.on('disconnect', (reason) => {
+            document.getElementById('status').textContent = 'Disconnected';
+            document.getElementById('status').style.color = 'red';
+            addMessage('System', `Disconnected from server: ${reason}`);
+        });
+        
+        // 连接错误
+        socket.on('connect_error', (error) => {
+            addMessage('Error', `Connection error: ${error.message}`);
+        });
+        
+        // 重连尝试
+        socket.on('reconnect_attempt', (attempt) => {
+            addMessage('System', `Reconnection attempt ${attempt}`);
+        });
+        
+        // 重连成功
+        socket.on('reconnect', (attempt) => {
+            document.getElementById('status').textContent = 'Connected';
+            document.getElementById('status').style.color = 'green';
+            addMessage('System', `Reconnected after ${attempt} attempts`);
+        });
+        
+        // 重连失败
+        socket.on('reconnect_failed', () => {
+            addMessage('Error', 'Failed to reconnect');
+        });
+        
+        // 欢迎消息
+        socket.on('welcome', (data) => {
+            addMessage('Server', data);
+        });
+        
+        // 接收消息
+        socket.on('message', (data) => {
+            addMessage('Server', data);
+        });
+        
+        // 接收自定义事件
+        socket.on('customEvent', (data) => {
+            addMessage('Server (Custom)', JSON.stringify(data, null, 2));
+        });
+        
+        // 发送消息
+        document.getElementById('sendBtn').addEventListener('click', handleSendMessage);
+        
+        // 发送自定义事件
+        document.getElementById('customBtn').addEventListener('click', handleSendCustomEvent);
+        
+        // 事件处理函数
+        function handleSendMessage() {
+            const message = document.getElementById('messageInput').value.trim();
+            if (message) {
+                socket.emit('message', message);
+                addMessage('You', message);
+                document.getElementById('messageInput').value = '';
+            }
+        }
+        
+        function handleSendCustomEvent() {
+            const data = document.getElementById('customInput').value.trim();
+            if (data) {
+                try {
+                    const jsonData = JSON.parse(data);
+                    socket.emit('customEvent', jsonData);
+                    addMessage('You (Custom)', JSON.stringify(jsonData, null, 2));
+                } catch (e) {
+                    // 如果不是JSON，发送普通字符串
+                    socket.emit('customEvent', data);
+                    addMessage('You (Custom)', data);
+                }
+                document.getElementById('customInput').value = '';
+            }
+        }
+        
+        // 添加消息到页面
+        function addMessage(sender, message) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            messageDiv.innerHTML = `<strong>${sender}:</strong> ${message}`;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // ========== 快速添加所有事件绑定 ==========
+        
+        // 连接控制测试
+        document.getElementById('disconnectBtn').onclick = () => { socket.disconnect(); addMessage('System', 'Disconnected manually'); };
+        document.getElementById('connectBtn').onclick = () => { socket.connect(); addMessage('System', 'Reconnecting...'); };
+        document.getElementById('namespaceBtn').onclick = () => { 
+            const nsSocket = io('http://localhost:8088/test');
+            nsSocket.on('connect', () => addMessage('System', 'Namespace connected'));
+        };
+        document.getElementById('testConnectionState').onclick = () => addMessage('System', `State: ${socket.connected}, ID: ${socket.id || 'None'}`);
+        document.getElementById('pingServer').onclick = () => { socket.emit('ping'); addMessage('You', 'Ping sent'); };
+        document.getElementById('checkReconnection').onclick = () => { 
+            socket.disconnect(); 
+            setTimeout(() => addMessage('System', 'Auto-reconnect in progress'), 1000); 
+        };
+        document.getElementById('disconnectWithReason').onclick = () => { 
+            socket.disconnect(); 
+            addMessage('System', 'Disconnected with reason'); 
+        };
+
+        // ACK测试
+        document.getElementById('ackWithString').onclick = () => socket.emit('ack', 'string', res => addMessage('ACK', `String: ${res}`));
+        document.getElementById('ackWithObject').onclick = () => socket.emit('ack', {data: 'obj'}, res => addMessage('ACK', `Obj: ${JSON.stringify(res)}`));
+        document.getElementById('ackWithArray').onclick = () => socket.emit('ack', [1,2,3], res => addMessage('ACK', `Array: ${JSON.stringify(res)}`));
+        document.getElementById('ackTimeout').onclick = () => { 
+            const timeout = parseInt(document.getElementById('timeoutValue').value) || 3000;
+            socket.emit('ackTimeout', timeout, res => addMessage('ACK', res || 'timeout'));
+        };
+        document.getElementById('ackMultiple').onclick = () => {
+            for(let i=1; i<=3; i++) socket.emit(`ack${i}`, i, res => addMessage(`ACK${i}`, res));
+        };
+        document.getElementById('requestServerAck').onclick = () => socket.emit('reqAck', {}, res => addMessage('Server ACK', res));
+        document.getElementById('twoWayAck').onclick = () => socket.emit('twoWay', {}, res => socket.emit('twoWayBack', res, res2 => addMessage('TwoWay', res2)));
+
+        // 二进制测试
+        document.getElementById('fileInput').onchange = function() {
+            const fileInfo = document.getElementById('fileInfo');
+            if(this.files[0]) fileInfo.textContent = `${this.files[0].name} (${this.files[0].size} bytes)`;
+        };
+        document.getElementById('sendFile').addEventListener('click', handleSendFile);
+        
+        function handleSendFile() {
+            const file = document.getElementById('fileInput').files[0];
+            if(file) {
+                // 检查文件大小
+                const maxSize = 10 * 1024 * 1024; // 10MB
+                if(file.size > maxSize) {
+                    addMessage('Error', 'File size exceeds 10MB limit');
+                    return;
+                }
+                
+                const fileInfo = document.getElementById('fileInfo');
+                fileInfo.textContent = `Uploading ${file.name}...`;
+                
+                const reader = new FileReader();
+                reader.onload = function() {
+                    // 优化：直接发送二进制数据，而不是包装在对象中
+                    socket.emit('file', {name: file.name, data: reader.result});
+                    addMessage('You', `File: ${file.name}`);
+                    fileInfo.textContent = `${file.name} (${file.size} bytes) - Uploaded`;
+                };
+                reader.onerror = function() {
+                    addMessage('Error', 'File reading failed');
+                    fileInfo.textContent = 'File reading error';
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                addMessage('Error', 'Please select a file first');
+            }
+        }
+        document.getElementById('sendBuffer').onclick = () => {
+            const buf = new ArrayBuffer(16);
+            new Uint8Array(buf).set([1,2,3,4,5]);
+            socket.emit('buffer', buf);
+            addMessage('You', 'Buffer sent');
+        };
+        document.getElementById('sendTypedArray').onclick = () => {
+            const arr = new Uint16Array([10,20,30]);
+            socket.emit('typedArray', arr.buffer);
+            addMessage('You', 'TypedArray sent');
+        };
+        document.getElementById('sendBlob').onclick = () => {
+            const blob = new Blob(['test data']);
+            socket.emit('blob', blob);
+            addMessage('You', 'Blob sent');
+        };
+        document.getElementById('sendBinaryEvent').onclick = () => {
+            const buf = new ArrayBuffer(8);
+            socket.emit('binaryEvent', {text: 'mixed', binary: buf});
+            addMessage('You', 'Binary event sent');
+        };
+        document.getElementById('requestBinary').onclick = () => socket.emit('reqBinary', {}, res => addMessage('Server Binary', res));
+
+        // 服务器事件监听
+        socket.on('ackResponse', data => addMessage('Server ACK', data));
+        socket.on('binaryResponse', data => addMessage('Server Binary', data));
+        socket.on('pong', () => addMessage('Pong', 'Ping response received'));
+        socket.on('connect_error', err => addMessage('Error', err.message));
+        socket.on('reconnect', attempt => addMessage('System', `Reconnected (attempt ${attempt})`));
+    </script>
+</body>
+</html>
