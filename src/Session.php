@@ -192,7 +192,15 @@ final class Session
         return (time() - $this->createdAt) > self::SESSION_TTL;
     }
 
-    private function cleanupOldestSessions(int $batchSize): void
+
+
+    public static function cleanup(): void
+    {
+        self::cleanupOldestSessionsInternal(100);
+        self::cleanupCacheInternal();
+    }
+
+    private static function cleanupOldestSessionsInternal(int $batchSize): void
     {
         $cleaned = 0;
         $now = time();
@@ -207,20 +215,13 @@ final class Session
         }
     }
 
-    private function cleanupCache(): void
+    private static function cleanupCacheInternal(): void
     {
         asort(self::$cacheAccess);
         $keysToRemove = array_slice(array_keys(self::$cacheAccess), 0, count(self::$cache) - self::CACHE_SIZE);
         foreach ($keysToRemove as $sid) {
             unset(self::$cache[$sid], self::$cacheAccess[$sid]);
         }
-    }
-
-    public static function cleanup(): void
-    {
-        $session = new self(self::generateSid()); // Temporary instance for access
-        $session->cleanupOldestSessions(100);
-        $session->cleanupCache();
     }
 
     public static function sendToSession(string $sid, array $packet): bool

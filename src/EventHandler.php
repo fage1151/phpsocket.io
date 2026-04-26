@@ -838,12 +838,15 @@ class EventHandler
         
         // 从二级索引移除
         if (isset($this->ackCallbacksById[$ackId])) {
-            $index = array_search($callbackKey, $this->ackCallbacksById[$ackId], true);
-            if ($index !== false) {
-                array_splice($this->ackCallbacksById[$ackId], $index, 1);
-                if (empty($this->ackCallbacksById[$ackId])) {
-                    unset($this->ackCallbacksById[$ackId]);
+            $ids = &$this->ackCallbacksById[$ackId];
+            foreach ($ids as $i => $key) {
+                if ($key === $callbackKey) {
+                    array_splice($ids, $i, 1);
+                    break;
                 }
+            }
+            if (empty($ids)) {
+                unset($this->ackCallbacksById[$ackId]);
             }
         }
     }

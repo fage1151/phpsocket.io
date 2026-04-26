@@ -695,11 +695,7 @@ class Socket
      */
     public function getTransport(): string
     {
-        // 如果有session对象，从其获取传输类型
-        if ($this->session && isset($this->session->transport)) {
-            return $this->session->transport;
-        }
-        return 'websocket'; // 默认传输类型
+        return $this->session?->transport ?? 'websocket';
     }
 
     /**

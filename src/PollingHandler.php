@@ -287,16 +287,6 @@ final class PollingHandler
         $this->sendHttpResponse($connection, $code, [], $message);
     }
 
-    private function getServerLoad(): float
-    {
-        if (function_exists('sys_getloadavg')) {
-            $load = sys_getloadavg();
-            return min(10, $load[0]);
-        }
-
-        return 0;
-    }
-
     private function isSessionTimeout(Session $session): bool
     {
         $lastPong = property_exists($session, 'lastPong') ? $session->lastPong : 0;
@@ -306,15 +296,7 @@ final class PollingHandler
 
     private function calculatePollingTimeout(Session $session): int
     {
-        $baseTimeout = 10;
-        $load = $this->getServerLoad();
-        $loadAdjustment = max(1, $baseTimeout - $load);
-        $lastPong = property_exists($session, 'lastPong') ? $session->lastPong : 0;
-        $inactivityTime = time() - $lastPong;
-        $activityAdjustment = min(5, max(1, $inactivityTime / 60));
-        $timeout = min($baseTimeout, max(1, $loadAdjustment - $activityAdjustment));
-
-        return (int)$timeout;
+        return 10;
     }
 
     private function cancelConnectionTimer(\Workerman\Connection\TcpConnection $connection): void

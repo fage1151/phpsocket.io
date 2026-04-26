@@ -18,13 +18,13 @@ class SocketIOServer
 {
     private static ?self $instance = null;
     
-    private ?ServerManager $serverManager;
-    private ?RoomManager $roomManager;
-    private ?MiddlewareHandler $middlewareHandler;
-    private ?EventHandler $eventHandler;
-    private ?EngineIOHandler $engineIoHandler;
-    private ?PollingHandler $pollingHandler;
-    private ?HttpRequestHandler $httpRequestHandler;
+    private readonly ?ServerManager $serverManager;
+    private readonly ?RoomManager $roomManager;
+    private readonly ?MiddlewareHandler $middlewareHandler;
+    private readonly ?EventHandler $eventHandler;
+    private readonly ?EngineIOHandler $engineIoHandler;
+    private readonly ?PollingHandler $pollingHandler;
+    private readonly ?HttpRequestHandler $httpRequestHandler;
     private array $namespaceHandlers = [];
     private ?string $sid = null;
     private ?LoggerInterface $logger = null;
