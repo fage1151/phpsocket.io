@@ -253,6 +253,10 @@ class Socket
             return true;
         }
 
+        if (preg_match('/[\x01-\x1F\x7F]/', $data)) {
+            return true;
+        }
+
         // 快速检查2：检查是否包含控制字符（除了常见的空白字符）
         $length = strlen($data);
         $controlCharCount = 0;

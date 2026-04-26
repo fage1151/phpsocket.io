@@ -196,7 +196,7 @@ $io->of('/chat')->on('connection', function (mixed $socket) use ($io): void {
     });
 
     $socket->on('typedArray', function (mixed $data) use ($socket): void {
-        $socket->emit('binaryResponse', ['status' => 'ok', 'data' => $data]);
+        $socket->emit('binaryResponse', ['status' => 'ok'], $data);
     });
 
     $socket->on('ack1', function (mixed $data) use ($socket): void {
