@@ -20,6 +20,7 @@
 *.log
 /server.log
 /logs/
+/workerman.log
 
 # OS files
 .DS_Store
@@ -34,6 +35,10 @@ Thumbs.db
 /tmp/
 /cache/
 *.tmp
+nohup.out
+
+# PID files
+*.pid
 
 # Environment (optional - use .env.example instead)
 /.env

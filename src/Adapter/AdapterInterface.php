@@ -17,71 +17,71 @@ interface AdapterInterface
      * @param array $config 配置参数
      */
     public function init(array $config = []): void;
-    
+
     /**
      * 广播消息到所有进程
      * @param array $packet 消息包数据
      */
     public function broadcast(array $packet): void;
-    
+
     /**
      * 发送消息到指定房间
      * @param string $room 房间名称
      * @param array $packet 消息包数据
      */
     public function to(string $room, array $packet): void;
-    
+
     /**
      * 单发消息到指定会话
      * @param string $sid 目标会话ID
      * @param array $packet 消息包数据
      */
     public function emit(string $sid, array $packet): void;
-    
+
     /**
      * 添加房间成员
      * @param string $sid 会话ID
      * @param string $room 房间名称
      */
     public function join(string $sid, string $room): void;
-    
+
     /**
      * 移除房间成员
      * @param string $sid 会话ID
      * @param string $room 房间名称
      */
     public function leave(string $sid, string $room): void;
-    
+
     /**
      * 清理会话关联的房间
      * @param string $sid 会话ID
      */
     public function remove(string $sid): void;
-    
+
     /**
      * 获取房间成员列表
      * @param string $room 房间名称
      * @return array<string> 成员会话ID列表
      */
     public function clients(string $room): array;
-    
+
     /**
      * 注册会话
      * @param string $sid 会话ID
      */
     public function register(string $sid): void;
-    
+
     /**
      * 注销会话
      * @param string $sid 会话ID
      */
     public function unregister(string $sid): void;
-    
+
     /**
      * 关闭适配器
      */
     public function close(): void;
-    
+
     /**
      * 设置日志记录器
      * @param LoggerInterface $logger 日志记录器

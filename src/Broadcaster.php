@@ -49,7 +49,7 @@ final class Broadcaster
      * @var array
      */
     private array $exceptRooms = [];
-    
+
     /**
      * 日志记录器
      *
@@ -72,7 +72,7 @@ final class Broadcaster
         $this->server = $server;
         $this->namespace = $namespace;
         $this->excludeSocket = $excludeSocket;
-        
+
         // 初始化日志记录器
         if ($this->server && method_exists($this->server, 'getLogger')) {
             $this->logger = $this->server->getLogger();
@@ -173,7 +173,7 @@ final class Broadcaster
     {
         $adapter = $this->server->getAdapter();
         $rooms = is_array($this->targetRoom) ? $this->targetRoom : [$this->targetRoom];
-        
+
         if ($adapter) {
             // 使用适配器：只构建一次数据包
             $packetArray = $this->buildEventPacket($event, $args);
@@ -182,7 +182,7 @@ final class Broadcaster
             }
             return;
         }
-        
+
         // 不使用适配器：逐个发送
         $roomManager = $this->server->getRoomManager();
         foreach ($rooms as $room) {
@@ -209,7 +209,7 @@ final class Broadcaster
             $adapter->broadcast($packetArray);
             return;
         }
-        
+
         // 不使用适配器：逐个发送
         $sockets = $this->server->fetchSockets($this->namespace);
         foreach ($sockets as $socket) {

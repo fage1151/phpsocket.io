@@ -18,12 +18,12 @@ final class PollingHandler
         $this->serverManager = $serverManager;
         $this->engineIoHandler = $engineIoHandler;
     }
-    
+
     public function setLogger(LoggerInterface $logger): void
     {
         $this->logger = $logger;
     }
-    
+
     /**
      * 唤醒等待的 polling 连接
      */
@@ -32,13 +32,13 @@ final class PollingHandler
         if (!isset($this->waitingConnections[$sid])) {
             return;
         }
-        
+
         $connectionInfo = $this->waitingConnections[$sid];
         unset($this->waitingConnections[$sid]);
-        
+
         $connection = $connectionInfo['connection'];
         $this->cancelConnectionTimer($connection);
-        
+
         $session = Session::get($sid);
         if ($session) {
             $messages = $session->flush();
@@ -47,7 +47,7 @@ final class PollingHandler
                 return;
             }
         }
-        
+
         $this->sendHttpResponse($connection, 200, [], '6');
     }
 
@@ -75,7 +75,7 @@ final class PollingHandler
         $session = new Session(Session::generateSid());
         $session->transport = 'polling';
         $session->isPollingUpgrade = true; // 标记这是一个从轮询升级的会话
-        
+
         // 优先使用 x-real-ip 头
         $clientIp = null;
         if ($req && method_exists($req, 'header')) {
@@ -84,14 +84,14 @@ final class PollingHandler
                 $clientIp = $xRealIp;
             }
         }
-        
+
         // 如果没有 x-real-ip，使用 Workerman 原生的 getRemoteIp()
         if (!$clientIp) {
             if (method_exists($connection, 'getRemoteIp')) {
                 $clientIp = $connection->getRemoteIp();
             }
         }
-        
+
         if ($clientIp) {
             $session->setRemoteIp($clientIp);
         }
@@ -129,19 +129,19 @@ final class PollingHandler
         $messages = $session->flush();
         if (empty($messages)) {
             $timeout = $this->calculatePollingTimeout($session);
-            
+
             // 保存等待的连接
             $this->waitingConnections[$sid] = [
                 'connection' => $connection,
                 'timestamp' => time()
             ];
-            
+
             // 设置超时定时器
-            $timerId = \Workerman\Timer::add($timeout, function() use ($connection, $sid) {
+            $timerId = \Workerman\Timer::add($timeout, function () use ($connection, $sid) {
                 if (isset($this->waitingConnections[$sid])) {
                     unset($this->waitingConnections[$sid]);
                 }
-                
+
                 $session = Session::get($sid);
                 if ($session) {
                     $messages = $session->flush();
@@ -154,14 +154,14 @@ final class PollingHandler
             }, [], false);
 
             $connection->timerId = $timerId;
-            
+
             // 当连接关闭时，清理等待连接记录
-            $connection->onClose = function() use ($sid) {
+            $connection->onClose = function () use ($sid) {
                 if (isset($this->waitingConnections[$sid])) {
                     unset($this->waitingConnections[$sid]);
                 }
             };
-            
+
             $this->logger?->debug('Polling connection waiting for messages', [
                 'sid' => $sid,
                 'timeout' => $timeout
@@ -218,7 +218,9 @@ final class PollingHandler
         }
 
         foreach ($packets as $packet) {
-            if (strlen($packet) === 0) continue;
+            if (strlen($packet) === 0) {
+                continue;
+            }
 
             if (strlen($packet) > 1024 * 1024) {
                 throw new \Exception('Packet too large');

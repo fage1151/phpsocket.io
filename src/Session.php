@@ -43,7 +43,7 @@ final class Session
     public mixed $pendingBinaryPlaceholder = null;
     public int $pendingBinaryCount = 0;
     public int $ackIdCounter = 0;
-    
+
     public static function setLogger(LoggerInterface $logger): void
     {
         self::$logger = $logger;
@@ -71,14 +71,14 @@ final class Session
     {
         $sessionCount = count(self::$sessions);
         if ($sessionCount >= self::MAX_SESSIONS) {
-            $this->cleanupOldestSessions(100);
+            self::cleanupOldestSessionsInternal(100);
         }
     }
 
     private function manageCache(): void
     {
         if (count(self::$cache) > self::CACHE_SIZE) {
-            $this->cleanupCache();
+            self::cleanupCacheInternal();
         }
     }
 
@@ -111,7 +111,7 @@ final class Session
     public function enqueue(string $packet): void
     {
         $this->pollingQueue[] = $packet;
-        
+
         // 通过单例模式唤醒等待的 polling 连接
         $server = SocketIOServer::getInstance();
         if ($server) {
@@ -138,13 +138,13 @@ final class Session
         if ($shouldUseWebSocket) {
             $this->isWs = true;
             $this->transport = 'websocket';
-            
+
             // 如果是从轮询升级来的，并且还没有升级完成，就加入队列
             if ($this->isPollingUpgrade && !$this->upgraded) {
                 $this->enqueue($packet);
                 return true;
             }
-            
+
             // 否则直接通过 WebSocket 发送
             try {
                 $result = HttpRequestHandler::sendWsFrame($this->connection, $packet, false, self::$logger);
@@ -162,7 +162,7 @@ final class Session
             }
         }
 
-        $this->enqueue($packet);                  
+        $this->enqueue($packet);
         return true;
     }
 
@@ -230,9 +230,9 @@ final class Session
         if (!$session) {
             return false;
         }
-        
+
         $engineIoPacket = '42' . json_encode($packet);
-        
+
         try {
             return $session->send($engineIoPacket);
         } catch (\Exception $e) {
@@ -267,7 +267,7 @@ final class Session
     {
         return (time() - $this->lastPong) < self::SESSION_TTL;
     }
-    
+
     /**
      * 设置客户端 IP 地址
      * @param string $ip 客户端 IP 地址
@@ -276,7 +276,7 @@ final class Session
     {
         $this->remoteIp = $ip;
     }
-    
+
     /**
      * 获取客户端 IP 地址
      */

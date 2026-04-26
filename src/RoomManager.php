@@ -27,10 +27,7 @@ final class RoomManager
         $this->sessionRooms[$sid] ??= [];
         $this->sessionRooms[$sid][$room] = true;
 
-        if ($this->server) {
-            $adapter = $this->server->getAdapter();
-            $adapter?->join($sid, $room);
-        }
+        $this->server?->getAdapter()?->join($sid, $room);
         return true;
     }
 
@@ -47,7 +44,7 @@ final class RoomManager
                 unset($this->rooms[$room]);
             }
         }
-        
+
         if (isset($this->sessionRooms[$sid])) {
             unset($this->sessionRooms[$sid][$room]);
             if (empty($this->sessionRooms[$sid])) {
@@ -55,10 +52,7 @@ final class RoomManager
             }
         }
 
-        if ($this->server) {
-            $adapter = $this->server->getAdapter();
-            $adapter?->leave($sid, $room);
-        }
+        $this->server?->getAdapter()?->leave($sid, $room);
         return true;
     }
 
@@ -81,10 +75,7 @@ final class RoomManager
             unset($this->sessionRooms[$sid]);
         }
 
-        if ($this->server) {
-            $adapter = $this->server->getAdapter();
-            $adapter?->remove($sid);
-        }
+        $this->server?->getAdapter()?->remove($sid);
         return true;
     }
 
@@ -96,13 +87,11 @@ final class RoomManager
                 try {
                     return $adapter->clients($room);
                 } catch (\Exception $e) {
-                    if ($this->server && method_exists($this->server, 'getLogger')) {
-                        $this->server->getLogger()?->error('Failed to get room members from adapter', [
-                            'room' => $room,
-                            'error' => $e->getMessage(),
-                            'trace' => $e->getTraceAsString()
-                        ]);
-                    }
+                    $this->server->getLogger()->error('Failed to get room members from adapter', [
+                        'room' => $room,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString()
+                    ]);
                 }
             }
         }

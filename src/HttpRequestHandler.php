@@ -17,7 +17,7 @@ final class HttpRequestHandler
     private PollingHandler $pollingHandler;
     private EngineIOHandler $engineIoHandler;
     private ?LoggerInterface $logger = null;
-    
+
     /** @var array<int, string> 有效的引擎IO数据包起始字符 */
     private const VALID_PACKET_CHARS = ['0', '1', '2', '3', '4', '5', '6', 'b'];
 
@@ -30,7 +30,7 @@ final class HttpRequestHandler
         $this->pollingHandler = $pollingHandler;
         $this->engineIoHandler = $engineIoHandler;
     }
-    
+
     public function setLogger(LoggerInterface $logger): void
     {
         $this->logger = $logger;
@@ -115,7 +115,7 @@ final class HttpRequestHandler
             $session->connection = $connection;
             $session->isPollingUpgrade = false; // 这是直接的 WebSocket 连接，不是从轮询升级来的
             $session->upgraded = true; // 直接标记为升级完成
-            
+
             // 优先使用 x-real-ip 头
             $clientIp = null;
             if (method_exists($req, 'header')) {
@@ -124,24 +124,23 @@ final class HttpRequestHandler
                     $clientIp = $xRealIp;
                 }
             }
-            
+
             // 如果没有 x-real-ip，使用 Workerman 原生的 getRemoteIp()
             if (!$clientIp) {
                 if (method_exists($connection, 'getRemoteIp')) {
                     $clientIp = $connection->getRemoteIp();
                 }
             }
-            
+
             if ($clientIp) {
                 $session->setRemoteIp($clientIp);
             }
 
             $this->performWebSocketHandshake($connection, $req, $sid);
 
-            \Workerman\Timer::add(0.1, function() use ($connection, $session) {
+            \Workerman\Timer::add(0.1, function () use ($connection, $session) {
                 $this->engineIoHandler->sendHandshake($connection, $session);
             }, [], false);
-
         } catch (\Exception $e) {
             $this->logger?->error('WebSocket handshake failed', [
                 'remote_address' => $connection->getRemoteAddress(),
@@ -202,7 +201,7 @@ final class HttpRequestHandler
         $session->connection = $connection;
         $session->transport = 'websocket';
         $session->isWs = true;
-        
+
         // 确保保存客户端地址
         if ($session->remoteIp === null) {
             // 优先使用 x-real-ip 头
@@ -213,14 +212,14 @@ final class HttpRequestHandler
                     $clientIp = $xRealIp;
                 }
             }
-            
+
             // 如果没有 x-real-ip，使用 Workerman 原生的 getRemoteIp()
             if (!$clientIp) {
                 if (method_exists($connection, 'getRemoteIp')) {
                     $clientIp = $connection->getRemoteIp();
                 }
             }
-            
+
             if ($clientIp) {
                 $session->setRemoteIp($clientIp);
             }

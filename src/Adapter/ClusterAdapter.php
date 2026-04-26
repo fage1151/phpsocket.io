@@ -92,7 +92,7 @@ final class ClusterAdapter implements AdapterInterface
 
     private function startHeartbeat(): void
     {
-        \Workerman\Timer::add($this->config['heartbeat'], function(): void {
+        \Workerman\Timer::add($this->config['heartbeat'], function (): void {
             try {
                 $this->publishBatch($this->prefix . 'heartbeat', [
                     'pid' => getmypid(),
@@ -577,7 +577,7 @@ final class ClusterAdapter implements AdapterInterface
 
     private function startSessionMappingHeartbeat(): void
     {
-        \Workerman\Timer::add(30, function(): void {
+        \Workerman\Timer::add(30, function (): void {
             if (empty($this->sessionProcessMap)) {
                 return;
             }
@@ -593,7 +593,7 @@ final class ClusterAdapter implements AdapterInterface
 
     private function startSessionCleanupTimer(): void
     {
-        \Workerman\Timer::add(60, function(): void {
+        \Workerman\Timer::add(60, function (): void {
             $currentTime = microtime(true);
             $expirationTime = $currentTime - 120;
             $cleanupCount = 0;
@@ -691,7 +691,7 @@ final class ClusterAdapter implements AdapterInterface
         }
 
         $this->batchTimerStarted = true;
-        \Workerman\Timer::add($this->batchInterval, function($timerId): void {
+        \Workerman\Timer::add($this->batchInterval, function ($timerId): void {
             if (empty($this->messageQueue)) {
                 $this->batchTimerStarted = false;
                 \Workerman\Timer::del($timerId);

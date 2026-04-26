@@ -46,7 +46,7 @@ final class SocketNamespace
     {
         $this->name = $name;
         $this->server = $server;
-        
+
         // 初始化日志记录器
         if (method_exists($this->server, 'getLogger')) {
             $this->logger = $this->server->getLogger();
@@ -73,12 +73,12 @@ final class SocketNamespace
     public function on(string $event, callable $handler): self
     {
         $this->server->getEventHandler()->on($event, $handler, $this->name);
-        
+
         // 如果是 connection 事件，还要更新服务器端的 namespaceHandlers
         if ($event === 'connection') {
             $this->server->registerConnectionHandlerForNamespace($this->name, $handler);
         }
-        
+
         return $this;
     }
 

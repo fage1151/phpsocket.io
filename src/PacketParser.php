@@ -4,43 +4,8 @@ declare(strict_types=1);
 
 namespace PhpSocketIO;
 
-/**
- * Engine.IO 数据包类型枚举
- */
-enum EnginePacketType: int
-{
-    case OPEN = 0;
-    case CLOSE = 1;
-    case PING = 2;
-    case PONG = 3;
-    case MESSAGE = 4;
-    case UPGRADE = 5;
-    case NOOP = 6;
-
-    public static function tryFromInt(int $value): ?self
-    {
-        return self::tryFrom($value);
-    }
-}
-
-/**
- * Socket.IO 数据包类型枚举
- */
-enum SocketPacketType: int
-{
-    case CONNECT = 0;
-    case DISCONNECT = 1;
-    case EVENT = 2;
-    case ACK = 3;
-    case CONNECT_ERROR = 4;
-    case BINARY_EVENT = 5;
-    case BINARY_ACK = 6;
-
-    public static function tryFromInt(int $value): ?self
-    {
-        return self::tryFrom($value);
-    }
-}
+use PhpSocketIO\Enum\EnginePacketType;
+use PhpSocketIO\Enum\SocketPacketType;
 
 /**
  * Socket.IO 数据包解析器
@@ -359,7 +324,9 @@ final class PacketParser
         $packet['namespace'] = '/';
 
         foreach ($decoded as $i => $value) {
-            if ($i === 0) continue;
+            if ($i === 0) {
+                continue;
+            }
 
             if (is_string($value) && str_starts_with($value, '/')) {
                 $packet['namespace'] = $value;
@@ -722,9 +689,11 @@ final class PacketParser
             return $data;
         }
 
-        if (isset($data['_placeholder'], $data['num'])
+        if (
+            isset($data['_placeholder'], $data['num'])
             && $data['_placeholder'] === true
-            && isset($binaryAttachments[$data['num']])) {
+            && isset($binaryAttachments[$data['num']])
+        ) {
             return $binaryAttachments[$data['num']];
         }
 

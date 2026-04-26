@@ -81,7 +81,7 @@ class EngineIOHandler
             'type' => $packet['type'],
             'transport' => $session->transport
         ]);
-        
+
         switch ($packet['type']) {
             case 'PING':
                 return $this->handleHeartbeat($connection, $session, $packet);
@@ -93,18 +93,18 @@ class EngineIOHandler
                 return $this->handleBinary($packet, $connection, $session);
             case 'UPGRADE':
                 $session->upgraded = true;
-                
+
                 $this->logger?->info('Engine.IO 协议升级完成', [
                     'sid' => $session->sid,
                     'from' => 'polling',
                     'to' => 'websocket'
                 ]);
-                
+
                 $messages = $session->flush();
                 foreach ($messages as $msg) {
                     $session->send($msg);
                 }
-                
+
                 if (is_object($connection) && method_exists($connection, 'send')) {
                     $connection->send('6');
                 }
@@ -135,7 +135,7 @@ class EngineIOHandler
             $session->updateLastPong();
             return true;
         }
-        
+
         $session->updateLastPong();
         return true;
     }
@@ -155,11 +155,11 @@ class EngineIOHandler
     private function handleMessage(array $packet, mixed $connection, Session $session): bool
     {
         $message = $packet['data'];
-        
+
         if ($this->onSocketIOMessage !== null) {
             ($this->onSocketIOMessage)($message, $connection, $session);
         }
-        
+
         return true;
     }
 
@@ -169,11 +169,11 @@ class EngineIOHandler
     private function handleBinary(array $packet, mixed $connection, Session $session): bool
     {
         $binaryData = base64_decode($packet['data']);
-        
+
         if ($this->onBinaryMessage !== null) {
             ($this->onBinaryMessage)($binaryData, $connection, $session);
         }
-        
+
         return true;
     }
 
@@ -183,19 +183,19 @@ class EngineIOHandler
     public function sendHandshake(mixed $connection, Session $session): void
     {
         $isWsConnection = is_object($connection) && isset($connection->isWs) && $connection->isWs;
-        
+
         $handshake = [
             'sid' => $session->sid,
             'upgrades' => $isWsConnection ? [] : ['websocket'],
             'pingInterval' => $this->pingInterval,
             'pingTimeout' => $this->pingTimeout
         ];
-    
+
         $packet = PacketParser::buildEngineIOPacket('OPEN', $handshake);
         if (is_object($connection) && method_exists($connection, 'send')) {
             $connection->send($packet);
         }
-        
+
         $this->logger?->info('Engine.IO 握手完成', [
             'sid' => $session->sid,
             'transports' => $isWsConnection ? ['websocket'] : ['polling', 'websocket'],
@@ -209,10 +209,10 @@ class EngineIOHandler
      */
     public function sendSocketIOMessage(mixed $data, Session $session): void
     {
-        $socketIOPacket = is_array($data) 
-            ? PacketParser::buildSocketIOPacket('EVENT', $data) 
+        $socketIOPacket = is_array($data)
+            ? PacketParser::buildSocketIOPacket('EVENT', $data)
             : $data;
-        
+
         $engineIOPacket = PacketParser::buildEngineIOPacket('MESSAGE', $socketIOPacket);
         $session->send($engineIOPacket);
     }
@@ -238,11 +238,11 @@ class EngineIOHandler
         $intervalSec = $interval / 1000;
         $timeoutSec = $timeout / 1000;
         $now = time();
-        
+
         if ($now - $session->lastPong > $timeoutSec + $intervalSec) {
             return ['status' => 'timeout', 'session' => $session];
         }
-        
+
         if ($session->connection && $now - $session->lastPong > $intervalSec) {
             try {
                 if (is_object($session->connection) && method_exists($session->connection, 'send')) {
@@ -259,7 +259,7 @@ class EngineIOHandler
                 return ['status' => 'error', 'session' => $session, 'error' => $e->getMessage()];
             }
         }
-        
+
         return ['status' => 'ok', 'session' => $session];
     }
 
@@ -269,13 +269,13 @@ class EngineIOHandler
     public function handlePolling(mixed $connection, Session $session): void
     {
         $messages = $session->flush();
-        
+
         if (!empty($messages)) {
             $response = '';
             foreach ($messages as $msg) {
                 $response .= strlen($msg) . ':' . $msg;
             }
-            
+
             if (is_object($connection) && method_exists($connection, 'send')) {
                 $connection->send($response);
             }
@@ -294,30 +294,34 @@ class EngineIOHandler
         $messages = [];
         $offset = 0;
         $payloadLength = strlen($payload);
-        
+
         while ($offset < $payloadLength) {
             $colonPos = strpos($payload, ':', $offset);
-            if ($colonPos === false) break;
-            
+            if ($colonPos === false) {
+                break;
+            }
+
             $lengthStr = substr($payload, $offset, $colonPos - $offset);
             $length = intval($lengthStr);
-            
-            if ($length <= 0) break;
-            
+
+            if ($length <= 0) {
+                break;
+            }
+
             $messageStart = $colonPos + 1;
             $message = substr($payload, $messageStart, $length);
-            
+
             $messages[] = $message;
             $offset = $messageStart + $length;
         }
-        
+
         foreach ($messages as $msg) {
             $packet = PacketParser::parseEngineIOPacket($msg);
             if ($packet) {
                 $this->handlePacket($msg, $packet, null, $session);
             }
         }
-        
+
         return count($messages);
     }
 
@@ -336,18 +340,18 @@ class EngineIOHandler
     {
         $checkInterval = 5;
         $cleanupCounter = 0;
-        
-        \Workerman\Timer::add($checkInterval, function() use (&$cleanupCounter) {
+
+        \Workerman\Timer::add($checkInterval, function () use (&$cleanupCounter) {
             $sessions = Session::all();
-            
+
             foreach ($sessions as $session) {
                 $result = $this->processSessionHeartbeat($session, $this->pingInterval, $this->pingTimeout);
-                
+
                 if ($result['status'] === 'timeout') {
                     $this->cleanupSession($result['session']);
                 }
             }
-            
+
             if (++$cleanupCounter >= 6) {
                 Session::cleanup();
                 $cleanupCounter = 0;
@@ -373,14 +377,14 @@ class EngineIOHandler
                 }
             }
         }
-        
+
         if ($this->roomManager) {
             $this->roomManager->leaveAllRooms($session->sid);
         }
-        
+
         Session::remove($session->sid);
     }
-    
+
     /**
      * 处理Workerman解析后的WebSocket消息
      */
@@ -392,23 +396,23 @@ class EngineIOHandler
             'upgraded' => $session->upgraded,
             'isPollingUpgrade' => $session->isPollingUpgrade
         ]);
-        
+
         $packet = PacketParser::parseEngineIOPacket($data);
         if (!$packet) {
             $this->logger?->warning('无法解析 Engine.IO 数据包', ['sid' => $session->sid]);
             return;
         }
-        
+
         $this->logger?->debug('解析出 Engine.IO 数据包', [
             'sid' => $session->sid,
             'type' => $packet['type']
         ]);
-        
+
         if (!$session->connection) {
             $this->logger?->warning('Session 没有 connection', ['sid' => $session->sid]);
             return;
         }
-        
+
         // 如果是从轮询升级来的，并且还没升级完成，只允许特定类型的数据包
         if ($session->isPollingUpgrade && !$session->upgraded) {
             $allowedTypesBeforeUpgrade = ['PING', 'PONG', 'UPGRADE', 'NOOP'];
@@ -420,7 +424,7 @@ class EngineIOHandler
                 return;
             }
         }
-        
+
         $this->handlePacket($data, $packet, $session->connection, $session);
     }
 

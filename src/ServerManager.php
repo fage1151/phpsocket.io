@@ -18,7 +18,7 @@ final class ServerManager
 
     public int $pingInterval;
     public int $pingTimeout;
-    public ?AdapterInterface $adapter = null;
+    private ?AdapterInterface $adapter = null;
     private bool $clusterEnabled = false;
     public array $serverOptions = [];
     private bool $isRunning = false;
