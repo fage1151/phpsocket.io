@@ -115,6 +115,26 @@ final class HttpRequestHandler
             $session->connection = $connection;
             $session->isPollingUpgrade = false; // 这是直接的 WebSocket 连接，不是从轮询升级来的
             $session->upgraded = true; // 直接标记为升级完成
+            
+            // 优先使用 x-real-ip 头
+            $clientIp = null;
+            if (method_exists($req, 'header')) {
+                $xRealIp = $req->header('x-real-ip');
+                if ($xRealIp) {
+                    $clientIp = $xRealIp;
+                }
+            }
+            
+            // 如果没有 x-real-ip，使用 Workerman 原生的 getRemoteIp()
+            if (!$clientIp) {
+                if (method_exists($connection, 'getRemoteIp')) {
+                    $clientIp = $connection->getRemoteIp();
+                }
+            }
+            
+            if ($clientIp) {
+                $session->setRemoteIp($clientIp);
+            }
 
             $this->performWebSocketHandshake($connection, $req, $sid);
 
@@ -182,6 +202,29 @@ final class HttpRequestHandler
         $session->connection = $connection;
         $session->transport = 'websocket';
         $session->isWs = true;
+        
+        // 确保保存客户端地址
+        if ($session->remoteIp === null) {
+            // 优先使用 x-real-ip 头
+            $clientIp = null;
+            if (method_exists($req, 'header')) {
+                $xRealIp = $req->header('x-real-ip');
+                if ($xRealIp) {
+                    $clientIp = $xRealIp;
+                }
+            }
+            
+            // 如果没有 x-real-ip，使用 Workerman 原生的 getRemoteIp()
+            if (!$clientIp) {
+                if (method_exists($connection, 'getRemoteIp')) {
+                    $clientIp = $connection->getRemoteIp();
+                }
+            }
+            
+            if ($clientIp) {
+                $session->setRemoteIp($clientIp);
+            }
+        }
 
         $this->performWebSocketHandshake($connection, $req, $sid);
 

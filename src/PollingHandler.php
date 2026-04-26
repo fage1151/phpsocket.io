@@ -63,18 +63,38 @@ final class PollingHandler
 
         match ($method) {
             'GET' => $sid === null
-                ? $this->handlePollingNew($connection)
+                ? $this->handlePollingNew($connection, $req)
                 : $this->handlePollingGet($connection, $sid),
             'POST' => $this->handlePollingPost($connection, $sid, $req->rawBody() ?? ''),
             default => $this->sendErrorResponse($connection, 'Method not allowed'),
         };
     }
 
-    private function handlePollingNew(\Workerman\Connection\TcpConnection $connection): void
+    private function handlePollingNew(\Workerman\Connection\TcpConnection $connection, mixed $req = null): void
     {
         $session = new Session(Session::generateSid());
         $session->transport = 'polling';
         $session->isPollingUpgrade = true; // 标记这是一个从轮询升级的会话
+        
+        // 优先使用 x-real-ip 头
+        $clientIp = null;
+        if ($req && method_exists($req, 'header')) {
+            $xRealIp = $req->header('x-real-ip');
+            if ($xRealIp) {
+                $clientIp = $xRealIp;
+            }
+        }
+        
+        // 如果没有 x-real-ip，使用 Workerman 原生的 getRemoteIp()
+        if (!$clientIp) {
+            if (method_exists($connection, 'getRemoteIp')) {
+                $clientIp = $connection->getRemoteIp();
+            }
+        }
+        
+        if ($clientIp) {
+            $session->setRemoteIp($clientIp);
+        }
 
         $body = '0' . json_encode([
             'sid' => $session->sid,

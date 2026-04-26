@@ -63,12 +63,17 @@ $io->use(function (array $socket, array $packet, callable $next): void {
 
 
 $io->of('/chat')->on('connection', function (mixed $socket) use ($io): void {
+    // ========== 获取客户端 IP 示例 ==========
+    $clientIp = $socket->getRemoteIp();
+    echo "新连接: ID={$socket->id}, IP={$clientIp}\n";
+    
     // ========== Socket 实例级别的中间件 ==========
     
     // 1. Socket 级别日志记录
     $socket->use(function (array $packet, callable $next) use ($socket): void {
         $eventName = $packet['event'] ?? 'unknown';
-        echo "[Socket Middleware] Socket {$socket->id} 收到事件: {$eventName}\n";
+        $clientIp = $socket->getRemoteIp() ?? 'unknown';
+        echo "[Socket Middleware] Socket {$socket->id} (IP: {$clientIp}) 收到事件: {$eventName}\n";
         $next();
     });
     

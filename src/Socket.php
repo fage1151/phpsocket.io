@@ -330,6 +330,17 @@ class Socket
         $this->middlewares[] = $middleware;
         return $this;
     }
+    
+    /**
+     * 获取客户端 IP 地址
+     */
+    public function getRemoteIp(): ?string
+    {
+        if ($this->session) {
+            return $this->session->getRemoteIp();
+        }
+        return null;
+    }
 
     /**
      * 执行 Socket 实例级别的中间件链
