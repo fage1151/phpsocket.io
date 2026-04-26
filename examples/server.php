@@ -53,7 +53,7 @@ $io->use(function (array $socket, array $packet, callable $next): void {
     if (in_array($packet['type'], ['EVENT', 'BINARY_EVENT'])) {
         $eventName = $packet['event'] ?? '';
         echo "[Middleware] 事件: {$eventName} (SID: {$sid})\n";
-
+ 
         // 这里可以添加事件过滤逻辑
     }
 
@@ -65,7 +65,7 @@ $io->use(function (array $socket, array $packet, callable $next): void {
 $io->of('/chat')->on('connection', function (mixed $socket) use ($io): void {
     // ========== 获取客户端 IP 示例 ==========
     $clientIp = $socket->getRemoteIp();
-    echo "新连接: ID={$socket->id}, IP={$clientIp}\n";
+    echo "新连接: ID={$socket->sid}, IP={$clientIp}\n";
 
     // ========== Socket 实例级别的中间件 ==========
 
@@ -73,7 +73,7 @@ $io->of('/chat')->on('connection', function (mixed $socket) use ($io): void {
     $socket->use(function (array $packet, callable $next) use ($socket): void {
         $eventName = $packet['event'] ?? 'unknown';
         $clientIp = $socket->getRemoteIp() ?? 'unknown';
-        echo "[Socket Middleware] Socket {$socket->id} (IP: {$clientIp}) 收到事件: {$eventName}\n";
+        echo "[Socket Middleware] Socket {$socket->sid} (IP: {$clientIp}) 收到事件: {$eventName}\n";
         $next();
     });
 
@@ -118,7 +118,7 @@ $io->of('/chat')->on('connection', function (mixed $socket) use ($io): void {
     $socket->emit('welcome', 'Welcome to Socket.IO server!');
 
     $socket->on('chat message', function (mixed $msg) use ($socket): void {
-        $socket->broadcast->emit('chat message', $msg);
+        $socket->broadcasterer->emit('chat message', $msg);
     });
 
     $socket->on('message', function (mixed $msg) use ($socket): void {

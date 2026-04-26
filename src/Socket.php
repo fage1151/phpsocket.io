@@ -28,19 +28,7 @@ class Socket
     private ?LoggerInterface $logger = null; // 日志记录器
     private array $middlewares = []; // Socket 实例级别的中间件
 
-    /**
-     * 魔术方法，保持兼容性
-     */
-    public function __get(string $name): mixed
-    {
-        if ($name === 'id') {
-            return $this->sid;
-        }
-        if ($name === 'broadcast') {
-            return $this->broadcaster;
-        }
-        return null;
-    }
+    
 
 
     /**
@@ -570,7 +558,7 @@ class Socket
         }
 
         return [
-            'id' => $this->id,
+            'id' => $this->sid,
             'sid' => $this->sid,
             'namespace' => $this->namespace,
             'rooms' => $rooms,
@@ -602,13 +590,7 @@ class Socket
         return false;
     }
 
-    /**
-     * 广播事件到除了自己以外的其他连接
-     */
-    public function broadcast(): Broadcaster
-    {
-        return $this->broadcaster;
-    }
+    
 
     /**
      * 向指定房间或Socket发送消息 (to()的别名，Socket.IO v4标准)
@@ -692,19 +674,8 @@ class Socket
      */
     public function getId(): ?string
     {
-        return $this->id;
+        return $this->sid;
     }
 
-    /**
-     * 魔术方法：支持链式调用
-     */
-    public function __call(string $method, array $args): mixed
-    {
-        // 转发到服务器实例（如果方法不存在）
-        if ($this->server && method_exists($this->server, $method)) {
-            return call_user_func_array([$this->server, $method], $args);
-        }
-
-        throw new \BadMethodCallException("方法 {$method} 不存在");
-    }
+    
 }
