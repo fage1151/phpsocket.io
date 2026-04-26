@@ -336,10 +336,7 @@ class Socket
      */
     public function getRemoteIp(): ?string
     {
-        if ($this->session) {
-            return $this->session->getRemoteIp();
-        }
-        return null;
+        return $this->session?->getRemoteIp();
     }
 
     /**

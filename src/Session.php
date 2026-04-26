@@ -277,66 +277,11 @@ final class Session
     }
     
     /**
-     * 设置客户端地址信息 (自动解析 IP)
-     * @param string $address 客户端地址 (可能包含端口)
-     */
-    public function setRemoteAddress(string $address): void
-    {
-        // 提取 IP 地址（去掉端口）
-        if (strpos($address, ':') !== false) {
-            // 格式可能是 ip:port
-            if (strpos($address, '[') === 0) {
-                // IPv6 格式 [ip]:port
-                $ipEnd = strpos($address, ']');
-                if ($ipEnd !== false) {
-                    $this->remoteIp = substr($address, 1, $ipEnd - 1);
-                    return;
-                }
-            }
-            
-            // IPv4 或其他格式，取最后一个冒号前的部分
-            $lastColonPos = strrpos($address, ':');
-            if ($lastColonPos !== false) {
-                $this->remoteIp = substr($address, 0, $lastColonPos);
-                return;
-            }
-        }
-        
-        // 没有端口，直接使用
-        $this->remoteIp = $address;
-    }
-    
-    /**
      * 获取客户端 IP 地址
      */
     public function getRemoteIp(): ?string
     {
-        if ($this->remoteIp !== null) {
-            return $this->remoteIp;
-        }
-        
-        // 如果 connection 可用，使用 Workerman 原生的 getRemoteIp()
-        if ($this->connection && method_exists($this->connection, 'getRemoteIp')) {
-            try {
-                $this->remoteIp = $this->connection->getRemoteIp();
-                return $this->remoteIp;
-            } catch (\Exception) {
-                return null;
-            }
-        }
-        
-        // 回退到 getRemoteAddress()
-        if ($this->connection && method_exists($this->connection, 'getRemoteAddress')) {
-            try {
-                $address = $this->connection->getRemoteAddress();
-                $this->setRemoteAddress($address);
-                return $this->remoteIp;
-            } catch (\Exception) {
-                return null;
-            }
-        }
-        
-        return null;
+        return $this->remoteIp;
     }
 
     public function save(): void
