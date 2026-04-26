@@ -110,6 +110,12 @@ final class Session
     public function enqueue(string $packet): void
     {
         $this->pollingQueue[] = $packet;
+        
+        // 通过单例模式唤醒等待的 polling 连接
+        $server = SocketIOServer::getInstance();
+        if ($server) {
+            $server->wakePollingConnection($this->sid);
+        }
     }
 
     public function flush(): array

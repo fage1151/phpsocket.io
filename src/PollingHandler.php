@@ -11,6 +11,7 @@ final class PollingHandler
     private ServerManager $serverManager;
     private EngineIOHandler $engineIoHandler;
     private ?LoggerInterface $logger = null;
+    private array $waitingConnections = []; // 存储等待的连接
 
     public function __construct(ServerManager $serverManager, EngineIOHandler $engineIoHandler)
     {
@@ -21,6 +22,33 @@ final class PollingHandler
     public function setLogger(LoggerInterface $logger): void
     {
         $this->logger = $logger;
+    }
+    
+    /**
+     * 唤醒等待的 polling 连接
+     */
+    public function wakeWaitingConnection(string $sid): void
+    {
+        if (!isset($this->waitingConnections[$sid])) {
+            return;
+        }
+        
+        $connectionInfo = $this->waitingConnections[$sid];
+        unset($this->waitingConnections[$sid]);
+        
+        $connection = $connectionInfo['connection'];
+        $this->cancelConnectionTimer($connection);
+        
+        $session = Session::get($sid);
+        if ($session) {
+            $messages = $session->flush();
+            if (!empty($messages)) {
+                $this->sendHttpResponse($connection, 200, [], implode("\x1e", $messages));
+                return;
+            }
+        }
+        
+        $this->sendHttpResponse($connection, 200, [], '6');
     }
 
     public function handlePolling(\Workerman\Connection\TcpConnection $connection, mixed $req): void
@@ -81,7 +109,19 @@ final class PollingHandler
         $messages = $session->flush();
         if (empty($messages)) {
             $timeout = $this->calculatePollingTimeout($session);
+            
+            // 保存等待的连接
+            $this->waitingConnections[$sid] = [
+                'connection' => $connection,
+                'timestamp' => time()
+            ];
+            
+            // 设置超时定时器
             $timerId = \Workerman\Timer::add($timeout, function() use ($connection, $sid) {
+                if (isset($this->waitingConnections[$sid])) {
+                    unset($this->waitingConnections[$sid]);
+                }
+                
                 $session = Session::get($sid);
                 if ($session) {
                     $messages = $session->flush();
@@ -94,6 +134,18 @@ final class PollingHandler
             }, [], false);
 
             $connection->timerId = $timerId;
+            
+            // 当连接关闭时，清理等待连接记录
+            $connection->onClose = function() use ($sid) {
+                if (isset($this->waitingConnections[$sid])) {
+                    unset($this->waitingConnections[$sid]);
+                }
+            };
+            
+            $this->logger?->debug('Polling connection waiting for messages', [
+                'sid' => $sid,
+                'timeout' => $timeout
+            ]);
         } else {
             $batchSize = 10;
             $batches = array_chunk($messages, $batchSize);

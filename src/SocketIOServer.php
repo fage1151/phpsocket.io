@@ -33,6 +33,16 @@ class SocketIOServer
     private ?int $listenPort = null;
     private array $listenContext = [];
     private array $namespaces = [];
+    
+    /**
+     * 唤醒等待的 polling 连接
+     */
+    public function wakePollingConnection(string $sid): void
+    {
+        if ($this->pollingHandler) {
+            $this->pollingHandler->wakeWaitingConnection($sid);
+        }
+    }
 
     public function __construct(string $listen, array $options = [])
     {
@@ -40,6 +50,9 @@ class SocketIOServer
         $this->initializeComponents($options);
         $this->configureComponents();
         $this->parseListenAddress($listen, $options);
+        
+        // 设置单例
+        self::$instance = $this;
     }
     
     private function initializeLogger(array $options): void
