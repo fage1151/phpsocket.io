@@ -68,7 +68,7 @@ composer require workerman/redis
 │   ├── EventHandler.php          # 事件处理器
 │   ├── HttpRequestHandler.php    # HTTP请求处理器
 │   ├── Logger.php                # PSR-3 兼容日志器
-│   ├── MiddlewareHandler.php     # 中间件处理器
+│   ├── MiddlewarePipeline.php    # 中间件执行管道
 │   ├── PacketParser.php          # 数据包解析器
 │   ├── PollingHandler.php        # 轮询处理器
 │   ├── RoomManager.php           # 房间管理器
