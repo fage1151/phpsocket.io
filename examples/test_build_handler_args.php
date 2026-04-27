@@ -11,7 +11,7 @@ $testHandler = function (mixed $msg, mixed $callback = null) {
     echo "=== testHandler 被调用 ===\n";
     echo "  - msg: " . var_export($msg, true) . "\n";
     echo "  - callback is_callable: " . (is_callable($callback) ? '是' : '否') . "\n";
-    
+
     if (is_callable($callback)) {
         echo "  - 正在调用 callback...\n";
         $callback(['status' => 'ok', 'data' => $msg]);

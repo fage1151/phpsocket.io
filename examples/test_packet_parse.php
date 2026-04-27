@@ -20,16 +20,16 @@ echo "=== PacketParser 测试 ===\n\n";
 
 foreach ($testPackets as $i => $packet) {
     echo "测试数据包 " . ($i + 1) . ": " . $packet . "\n";
-    
+
     // 第一步：解析 Engine.IO 数据包
     $enginePacket = PacketParser::parseEngineIOPacket($packet);
     echo "Engine.IO 解析结果: " . json_encode($enginePacket, JSON_UNESCAPED_UNICODE) . "\n";
-    
+
     if ($enginePacket && $enginePacket['type'] === 'MESSAGE') {
         // 第二步：解析 Socket.IO 数据包
         $socketPacket = PacketParser::parseSocketIOPacket($enginePacket['data']);
         echo "Socket.IO 解析结果: " . json_encode($socketPacket, JSON_UNESCAPED_UNICODE) . "\n";
     }
-    
+
     echo "\n";
 }

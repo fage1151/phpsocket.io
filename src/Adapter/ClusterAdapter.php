@@ -391,10 +391,7 @@ final class ClusterAdapter implements AdapterInterface
             usleep(10000);
         }
 
-        if (isset($this->sessionProcessMap[$sid]) && $this->sessionProcessMap[$sid] === null) {
-            unset($this->sessionProcessMap[$sid]);
-        }
-
+        unset($this->sessionProcessMap[$sid]);
         return null;
     }
 
@@ -476,7 +473,6 @@ final class ClusterAdapter implements AdapterInterface
             3, 6 => isset($packet['id']) && is_numeric($packet['id']),
             4 => isset($packet['data']) && is_array($packet['data']),
             0, 1 => true,
-            default => false,
         };
     }
 

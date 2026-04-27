@@ -247,7 +247,12 @@ class SocketIOServer
             $this->roomManager->removeSession($session->sid);
 
             foreach ($session->namespaces as $namespace => $auth) {
-                $this->eventHandler->triggerEvent($session, $namespace, 'disconnect', []);
+                $socket = [
+                    'id' => $session->sid,
+                    'session' => $session,
+                    'namespace' => $namespace
+                ];
+                $this->eventHandler->triggerDisconnect($socket, 'client disconnect');
             }
 
             Session::remove($session->sid);
@@ -605,7 +610,12 @@ class SocketIOServer
 
         unset($session->namespaces[$namespace]);
 
-        $this->eventHandler->triggerEvent($session, $namespace, 'disconnect', []);
+        $socket = [
+            'id' => $session->sid,
+            'session' => $session,
+            'namespace' => $namespace
+        ];
+        $this->eventHandler->triggerDisconnect($socket, 'client namespace disconnect');
     }
 
     private function handleEventPacket(mixed $connection, Session $session, string $namespace, string $eventName, array $eventArgs = [], ?int $ackId = null): void
@@ -664,9 +674,7 @@ class SocketIOServer
 
         // 执行 Socket 实例的中间件链，然后处理事件
         $socket->runMiddlewares($packet, function () use ($session, $namespace, $eventName, $eventArgs, $socket, $ackId) {
-            if (!$this->eventHandler->triggerEventWithAck($session, $namespace, $eventName, $eventArgs, $ackId)) {
-                $this->processEventHandlers($session, $namespace, $eventName, $eventArgs, $socket, $ackId);
-            }
+            $this->processEventHandlers($session, $namespace, $eventName, $eventArgs, $socket, $ackId);
         });
     }
 
@@ -687,12 +695,10 @@ class SocketIOServer
             return;
         }
 
-        if (isset($session->ackCallbacks) && is_array($session->ackCallbacks)) {
-            if (isset($session->ackCallbacks[$ackId]) && is_callable($session->ackCallbacks[$ackId])) {
-                $callback = $session->ackCallbacks[$ackId];
-                $callback(...$data);
-                unset($session->ackCallbacks[$ackId]);
-            }
+        if (isset($session->ackCallbacks[$ackId]) && is_callable($session->ackCallbacks[$ackId])) {
+            $callback = $session->ackCallbacks[$ackId];
+            $callback(...$data);
+            unset($session->ackCallbacks[$ackId]);
         }
     }
 

@@ -28,7 +28,7 @@ class Socket
     private ?LoggerInterface $logger = null; // 日志记录器
     private array $middlewares = []; // Socket 实例级别的中间件
 
-    
+
 
 
     /**
@@ -463,7 +463,13 @@ class Socket
         // 触发断开事件，带reason参数
         $reason = $close ? 'server namespace disconnect' : 'client namespace disconnect';
         if ($this->server) {
-            $this->server->getEventHandler()->triggerEvent($this->session, $this->namespace, 'disconnect', [$reason]);
+            $socket = [
+                'id' => $this->sid,
+                'session' => $this->session,
+                'namespace' => $this->namespace,
+                'socket' => $this
+            ];
+            $this->server->getEventHandler()->triggerDisconnect($socket, $reason);
         }
 
         // 清理会话
@@ -515,7 +521,7 @@ class Socket
             }
 
             // 在EventHandler中存储（用于实际调用）
-            if ($this->server && $this->server->getEventHandler()) {
+            if ($this->server) {
                 $socket = ['id' => $this->sid, 'namespace' => $this->namespace];
                 $this->server->getEventHandler()->storeAckCallback($socket, $this->namespace, $ackId, $callback);
             }
@@ -594,7 +600,7 @@ class Socket
         return false;
     }
 
-    
+
 
     /**
      * 向指定房间或Socket发送消息 (to()的别名，Socket.IO v4标准)
@@ -680,6 +686,4 @@ class Socket
     {
         return $this->sid;
     }
-
-    
 }

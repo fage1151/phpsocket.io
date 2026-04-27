@@ -53,7 +53,7 @@ $io->use(function (array $socket, array $packet, callable $next): void {
     if (in_array($packet['type'], ['EVENT', 'BINARY_EVENT'])) {
         $eventName = $packet['event'] ?? '';
         echo "[Middleware] 事件: {$eventName} (SID: {$sid})\n";
- 
+
         // 这里可以添加事件过滤逻辑
     }
 

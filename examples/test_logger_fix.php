@@ -27,14 +27,14 @@ $testValues = [
 foreach ($testValues as $name => $value) {
     echo "测试 - {$name}:\n";
     echo "  输入值: " . var_export($value, true) . "\n";
-    
+
     // 使用反射调用私有方法
     $reflection = new ReflectionClass($logger);
     $method = $reflection->getMethod('formatValue');
     $method->setAccessible(true);
-    
+
     $result = $method->invoke($logger, $value);
-    
+
     echo "  输出结果: " . var_export($result, true) . "\n";
     echo "  输出类型: " . gettype($result) . "\n\n";
 }

@@ -319,10 +319,10 @@ class EventHandler
             // 通过SocketIOServer注册的处理器 - 优先执行路径
             $serverManager = $socketIOServer->getServerManager();
             $roomManager = $socketIOServer->getRoomManager();
-            $adapter = $serverManager ? $serverManager->getAdapter() : null;
+            $adapter = $serverManager->getAdapter();
 
             // 先尝试从socketIOServer获取已存在的Socket，避免创建多个实例
-            $sessionId = isset($socket['session']) ? $socket['session']->sid : null;
+            $sessionId = $socket['session']->sid;
             $realSocket = null;
             if (method_exists($socketIOServer, 'getOrCreateSocket')) {
                 $realSocket = $socketIOServer->getOrCreateSocket($socket['session'], $namespace);
@@ -335,7 +335,7 @@ class EventHandler
             }
 
             // 集群环境下自动注册会话
-            if ($serverManager && $serverManager->isClusterEnabled() && $adapter) {
+            if ($adapter) {
                 try {
                     $adapter->register($socket['id']);
                 } catch (\Exception $e) {
@@ -409,18 +409,14 @@ class EventHandler
         // 方式1：从EventHandler本身的server实例获取适配器
         if ($this->server && method_exists($this->server, 'getServerManager')) {
             $serverManager = $this->server->getServerManager();
-            if ($serverManager && $serverManager->isClusterEnabled()) {
-                $adapter = $serverManager->getAdapter();
-            }
+            $adapter = $serverManager->getAdapter();
         }
 
         // 方式2：从Socket实例直接获取适配器（如果存在对应的Socket对象）
         if (!$adapter && isset($socket['socket']) && method_exists($socket['socket'], 'getServerManager')) {
             $socketInstance = $socket['socket'];
             $serverManager = $socketInstance->getServerManager();
-            if ($serverManager && $serverManager->isClusterEnabled()) {
-                $adapter = $serverManager->getAdapter();
-            }
+            $adapter = $serverManager->getAdapter();
         }
 
         // 执行会话注销
@@ -948,61 +944,5 @@ class EventHandler
     {
         $namespace = $this->normalizeNamespace($namespace);
         return $this->namespaceHandlers[$namespace]['events'] ?? [];
-    }
-
-    /**
-     * 触发事件处理（兼容方法）
-     */
-    public function triggerEvent(Session $session, string $namespace = '/', string $eventName = '', array $args = []): mixed
-    {
-        return $this->triggerEventWithAck($session, $namespace, $eventName, $args, null);
-    }
-
-    /**
-     * 触发带ACK的事件处理
-     */
-    public function triggerEventWithAck(Session $session, string $namespace = '/', string $eventName = '', array $args = [], ?int $ackId = null): bool
-    {
-        $socket = [
-            'id' => $session->getSid(),
-            'session' => $session,
-            'namespace' => $namespace
-        ];
-
-        switch ($eventName) {
-            case 'connection':
-                $this->triggerConnect($socket, $namespace);
-                return true;
-            case 'disconnect':
-                $this->triggerDisconnect($socket, 'client disconnect');
-                return true;
-        };
-
-        if ($eventName) {
-            $packet = [
-                'type' => 'EVENT',
-                'namespace' => $namespace,
-                'event' => $eventName,
-                'data' => $args
-            ];
-
-            if ($ackId !== null) {
-                $packet['id'] = $ackId;
-            }
-
-            // 直接调用 handleEvent，不调用 handlePacket 避免重复处理中间件
-            $result = $this->handleEvent($packet, $socket);
-            return (bool)$result;
-        }
-
-        return false;
-    }
-
-    /**
-     * 分发事件（兼容方法）
-     */
-    public function dispatchEvent(Session $session, string $eventName, mixed $eventData, array $socket): bool
-    {
-        return $this->triggerEvent($session, $socket['namespace'] ?? '/', $eventName, $eventData);
     }
 }
