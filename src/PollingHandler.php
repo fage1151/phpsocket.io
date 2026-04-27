@@ -153,13 +153,14 @@ final class PollingHandler
                 $this->sendHttpResponse($connection, 200, [], '6');
             }, [], false);
 
-            $connection->timerId = $timerId;
+            ConnectionManager::setTimerId($connection, $timerId);
 
             // 当连接关闭时，清理等待连接记录
-            $connection->onClose = function () use ($sid) {
+            $connection->onClose = function () use ($sid, $connection) {
                 if (isset($this->waitingConnections[$sid])) {
                     unset($this->waitingConnections[$sid]);
                 }
+                ConnectionManager::cleanup($connection);
             };
 
             $this->logger?->debug('Polling connection waiting for messages', [
@@ -303,9 +304,10 @@ final class PollingHandler
 
     private function cancelConnectionTimer(\Workerman\Connection\TcpConnection $connection): void
     {
-        if (property_exists($connection, 'timerId')) {
-            \Workerman\Timer::del($connection->timerId);
-            unset($connection->timerId);
+        $timerId = ConnectionManager::getTimerId($connection);
+        if ($timerId !== null) {
+            \Workerman\Timer::del($timerId);
+            ConnectionManager::remove($connection, 'timerId');
         }
     }
 }

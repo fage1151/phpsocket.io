@@ -20,7 +20,6 @@ class SocketIOServer
 
     private ?ServerManager $serverManager;
     private ?RoomManager $roomManager;
-    private ?MiddlewareHandler $middlewareHandler;
     private ?EventHandler $eventHandler;
     private ?EngineIOHandler $engineIoHandler;
     private ?PollingHandler $pollingHandler;
@@ -66,11 +65,10 @@ class SocketIOServer
     {
         $this->serverManager = new ServerManager();
         $this->roomManager = new RoomManager();
-        $this->middlewareHandler = new MiddlewareHandler();
         $this->engineIoHandler = new EngineIOHandler($options);
         $this->eventHandler = new EventHandler(['server' => $this]);
         $this->pollingHandler = new PollingHandler($this->serverManager, $this->engineIoHandler);
-        $this->httpRequestHandler = new HttpRequestHandler($this->serverManager, $this->pollingHandler, $this->engineIoHandler);
+        $this->httpRequestHandler = new HttpRequestHandler($this->pollingHandler, $this->engineIoHandler);
     }
 
     private function configureComponents(): void

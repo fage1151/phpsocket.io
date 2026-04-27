@@ -30,13 +30,6 @@ final class SocketNamespace
     private SocketIOServer $server;
 
     /**
-     * 日志记录器
-     *
-     * @var LoggerInterface|null
-     */
-    private ?LoggerInterface $logger = null;
-
-    /**
      * 构造函数
      *
      * @param string $name 命名空间名称
@@ -46,11 +39,6 @@ final class SocketNamespace
     {
         $this->name = $name;
         $this->server = $server;
-
-        // 初始化日志记录器
-        if (method_exists($this->server, 'getLogger')) {
-            $this->logger = $this->server->getLogger();
-        }
     }
 
     /**

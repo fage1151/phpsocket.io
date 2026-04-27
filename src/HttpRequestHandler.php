@@ -13,7 +13,6 @@ use Psr\Log\LoggerInterface;
  */
 final class HttpRequestHandler
 {
-    private ServerManager $serverManager;
     private PollingHandler $pollingHandler;
     private EngineIOHandler $engineIoHandler;
     private ?LoggerInterface $logger = null;
@@ -22,11 +21,9 @@ final class HttpRequestHandler
     private const VALID_PACKET_CHARS = ['0', '1', '2', '3', '4', '5', '6', 'b'];
 
     public function __construct(
-        ServerManager $serverManager,
         PollingHandler $pollingHandler,
         EngineIOHandler $engineIoHandler
     ) {
-        $this->serverManager = $serverManager;
         $this->pollingHandler = $pollingHandler;
         $this->engineIoHandler = $engineIoHandler;
     }
@@ -38,12 +35,12 @@ final class HttpRequestHandler
 
     public function handleMessage(\Workerman\Connection\TcpConnection $connection, mixed $req): void
     {
-        if (!isset($connection->isWs) && $this->isDirectWebSocketHandshake($req)) {
+        if (!ConnectionManager::has($connection, 'isWs') && $this->isDirectWebSocketHandshake($req)) {
             $this->handleDirectWebSocketHandshake($connection, $req);
             return;
         }
 
-        if (isset($connection->isWs) && $connection->isWs) {
+        if (ConnectionManager::isWs($connection)) {
             $this->handleWebSocketMessage($connection, $req);
             return;
         }
@@ -58,12 +55,13 @@ final class HttpRequestHandler
 
     private function handleWebSocketMessage(\Workerman\Connection\TcpConnection $connection, mixed $data): void
     {
-        if (!isset($connection->sid)) {
+        $sid = ConnectionManager::getSid($connection);
+        if ($sid === null) {
             $connection->close();
             return;
         }
 
-        $session = Session::get($connection->sid);
+        $session = Session::get($sid);
         if (!$session) {
             return;
         }
@@ -167,8 +165,8 @@ final class HttpRequestHandler
         $connection->context->websocketDataBuffer = '';
         $connection->context->websocketCurrentFrameLength = 0;
         $connection->context->websocketCurrentFrameBuffer = '';
-        $connection->sid = $sid;
-        $connection->isWs = true;
+        ConnectionManager::setSid($connection, $sid);
+        ConnectionManager::setIsWs($connection, true);
     }
 
     private function isWebSocketUpgradeRequest(mixed $req): bool
@@ -180,7 +178,7 @@ final class HttpRequestHandler
 
     private function handleUpgrade(\Workerman\Connection\TcpConnection $connection, mixed $req): void
     {
-        $connection->isWs = true;
+        ConnectionManager::setIsWs($connection, true);
         $this->upgradeToWebSocket($connection, $req);
     }
 
@@ -196,8 +194,8 @@ final class HttpRequestHandler
             return false;
         }
 
-        $connection->isWs = true;
-        $connection->sid = $sid;
+        ConnectionManager::setIsWs($connection, true);
+        ConnectionManager::setSid($connection, $sid);
         $session->connection = $connection;
         $session->transport = 'websocket';
         $session->isWs = true;
@@ -248,7 +246,7 @@ final class HttpRequestHandler
 
     public static function sendWsFrame(\Workerman\Connection\TcpConnection $connection, string $data, bool $isBinary = false, ?\Psr\Log\LoggerInterface $logger = null): bool
     {
-        if (!isset($connection->isWs) || !$connection->isWs) {
+        if (!ConnectionManager::isWs($connection)) {
             return false;
         }
 
@@ -258,7 +256,7 @@ final class HttpRequestHandler
             return true;
         } catch (\Exception $e) {
             $logger?->error('Failed to send WebSocket frame', [
-                'sid' => $connection->sid ?? 'unknown',
+                'sid' => ConnectionManager::getSid($connection) ?? 'unknown',
                 'is_binary' => $isBinary,
                 'data_length' => strlen($data),
                 'error' => $e->getMessage(),
@@ -284,12 +282,13 @@ final class HttpRequestHandler
 
     public function handleConnectionClose(\Workerman\Connection\TcpConnection $connection): void
     {
-        if (isset($connection->sid)) {
-            $sid = $connection->sid;
+        $sid = ConnectionManager::getSid($connection);
+        if ($sid !== null) {
             $session = Session::get($sid);
             if ($session) {
                 Session::remove($sid);
             }
         }
+        ConnectionManager::cleanup($connection);
     }
 }
