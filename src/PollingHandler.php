@@ -74,27 +74,14 @@ final class PollingHandler
     {
         $session = new Session(Session::generateSid());
         $session->transport = 'polling';
-        $session->isPollingUpgrade = true; // 标记这是一个从轮询升级的会话
+        $session->isPollingUpgrade = true;
 
-        // 优先使用 x-real-ip 头
-        $clientIp = null;
-        if ($req && method_exists($req, 'header')) {
-            $xRealIp = $req->header('x-real-ip');
-            if ($xRealIp) {
-                $clientIp = $xRealIp;
-            }
-        }
-
-        // 如果没有 x-real-ip，使用 Workerman 原生的 getRemoteIp()
-        if (!$clientIp) {
-            if (method_exists($connection, 'getRemoteIp')) {
-                $clientIp = $connection->getRemoteIp();
-            }
-        }
-
+        $clientIp = $this->extractClientIp($connection, $req);
         if ($clientIp) {
             $session->setRemoteIp($clientIp);
         }
+
+        $session->setHandshake($this->buildHandshakeData($connection, $req));
 
         $body = '0' . json_encode([
             'sid' => $session->sid,
@@ -110,17 +97,102 @@ final class PollingHandler
         ], $body);
     }
 
+    private function extractClientIp(\Workerman\Connection\TcpConnection $connection, mixed $req): ?string
+    {
+        if ($req && method_exists($req, 'header')) {
+            $xRealIp = $req->header('x-real-ip');
+            if ($xRealIp) {
+                return $xRealIp;
+            }
+            $xForwardedFor = $req->header('x-forwarded-for');
+            if ($xForwardedFor) {
+                $ips = explode(',', $xForwardedFor);
+                return trim($ips[0]);
+            }
+        }
+
+        if (method_exists($connection, 'getRemoteIp')) {
+            return $connection->getRemoteIp();
+        }
+
+        return null;
+    }
+
+    private function buildHandshakeData(\Workerman\Connection\TcpConnection $connection, mixed $req): array
+    {
+        $headers = [];
+        if ($req && method_exists($req, 'header')) {
+            $headerNames = [
+                'host', 'user-agent', 'accept', 'accept-language', 'accept-encoding',
+                'origin', 'referer', 'cookie', 'authorization', 'x-requested-with',
+            ];
+            foreach ($headerNames as $name) {
+                $value = $req->header($name);
+                if ($value !== null) {
+                    $headers[$name] = $value;
+                }
+            }
+        }
+
+        $query = [];
+        if ($req && method_exists($req, 'get')) {
+            $queryParams = ['transport', 'sid', 'EIO', 't'];
+            foreach ($queryParams as $param) {
+                $value = $req->get($param);
+                if ($value !== null) {
+                    $query[$param] = $value;
+                }
+            }
+        }
+
+        $origin = $headers['origin'] ?? $headers['referer'] ?? null;
+        $host = $headers['host'] ?? '';
+        $xdomain = false;
+        if ($origin && $host) {
+            $originHost = parse_url($origin, PHP_URL_HOST);
+            $xdomain = $originHost !== $host;
+        }
+
+        $secure = false;
+        if (method_exists($connection, 'getRemoteAddress')) {
+            $remoteAddress = $connection->getRemoteAddress();
+            $secure = str_starts_with($remoteAddress, 'ssl://') || str_starts_with($remoteAddress, 'https://');
+        }
+
+        $url = null;
+        if ($req && method_exists($req, 'path')) {
+            $url = $req->path();
+            if (method_exists($req, 'queryString') && $req->queryString()) {
+                $url .= '?' . $req->queryString();
+            }
+        }
+
+        return [
+            'headers' => $headers,
+            'address' => $this->extractClientIp($connection, $req),
+            'xdomain' => $xdomain,
+            'secure' => $secure,
+            'url' => $url,
+            'query' => $query,
+        ];
+    }
+
     private function handlePollingGet(\Workerman\Connection\TcpConnection $connection, string $sid): void
     {
+        if (!Session::validateSidFormat($sid)) {
+            $this->sendErrorResponse($connection, "Invalid session ID format", 400);
+            return;
+        }
+
         $session = Session::get($sid);
         if ($session === null) {
-            $this->sendErrorResponse($connection, "Session not found: {$sid}");
+            $this->sendErrorResponse($connection, "Session not found: {$sid}", 404);
             return;
         }
 
         if ($this->isSessionTimeout($session)) {
             Session::remove($sid);
-            $this->sendErrorResponse($connection, "Session timeout: {$sid}");
+            $this->sendErrorResponse($connection, "Session timeout: {$sid}", 408);
             return;
         }
 
@@ -130,13 +202,11 @@ final class PollingHandler
         if (empty($messages)) {
             $timeout = $this->calculatePollingTimeout($session);
 
-            // 保存等待的连接
             $this->waitingConnections[$sid] = [
                 'connection' => $connection,
                 'timestamp' => time()
             ];
 
-            // 设置超时定时器
             $timerId = \Workerman\Timer::add($timeout, function () use ($connection, $sid) {
                 if (isset($this->waitingConnections[$sid])) {
                     unset($this->waitingConnections[$sid]);
@@ -155,7 +225,6 @@ final class PollingHandler
 
             ConnectionManager::setTimerId($connection, $timerId);
 
-            // 当连接关闭时，清理等待连接记录
             $connection->onClose = function () use ($sid, $connection) {
                 if (isset($this->waitingConnections[$sid])) {
                     unset($this->waitingConnections[$sid]);

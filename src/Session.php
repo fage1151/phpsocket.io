@@ -56,8 +56,38 @@ final class Session
         $this->sid = $sid;
         $this->createdAt = time();
         $this->lastPong = $this->createdAt;
+        $this->handshake = $this->createDefaultHandshake();
         self::$sessions[$sid] = $this;
         $this->manageCache();
+    }
+
+    private function createDefaultHandshake(): array
+    {
+        return [
+            'headers' => [],
+            'time' => date('c'),
+            'issued' => time() * 1000,
+            'address' => null,
+            'xdomain' => false,
+            'secure' => false,
+            'url' => null,
+            'query' => [],
+            'auth' => null,
+        ];
+    }
+
+    public function setHandshake(array $handshakeData): void
+    {
+        $this->handshake = array_merge($this->createDefaultHandshake(), $handshakeData);
+        $this->handshake['time'] = date('c', $this->createdAt);
+        $this->handshake['issued'] = $this->createdAt * 1000;
+    }
+
+    public function updateHandshake(array $data): void
+    {
+        if (is_array($this->handshake)) {
+            $this->handshake = array_merge($this->handshake, $data);
+        }
     }
 
     private function validateSid(string $sid): void
@@ -65,6 +95,11 @@ final class Session
         if (strlen($sid) !== 24 || !ctype_xdigit($sid)) {
             throw new \InvalidArgumentException("Invalid session ID format: {$sid}");
         }
+    }
+
+    public static function validateSidFormat(string $sid): bool
+    {
+        return strlen($sid) === 24 && ctype_xdigit($sid);
     }
 
     private function ensureSessionLimit(): void
@@ -287,6 +322,25 @@ final class Session
 
     public function save(): void
     {
+        self::$sessions[$this->sid] = $this;
+        self::$cache[$this->sid] = $this;
+        self::$cacheAccess[$this->sid] = time();
+    }
+
+    public function toArray(): array
+    {
+        return [
+            'sid' => $this->sid,
+            'transport' => $this->transport,
+            'namespaces' => $this->namespaces,
+            'remoteIp' => $this->remoteIp,
+            'createdAt' => $this->createdAt,
+            'lastPong' => $this->lastPong,
+            'isWs' => $this->isWs,
+            'upgraded' => $this->upgraded,
+            'messageCount' => $this->messageCount,
+            'errorCount' => $this->errorCount,
+        ];
     }
 
     public function close(): void

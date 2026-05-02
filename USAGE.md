@@ -76,6 +76,35 @@ $io = new SocketIOServer('0.0.0.0:8088', [
 | `workerCount` | int | 1 | Worker进程数量 |
 | `logLevel` | string | LogLevel::INFO | 日志级别（PSR-3） |
 | `ssl` | array | [] | SSL配置（用于HTTPS/WSS） |
+| `cors` | array/string | null | CORS 跨域配置 |
+
+#### CORS 跨域配置
+
+```php
+// 简单配置 - 仅指定允许的源
+$io = new SocketIOServer('0.0.0.0:8088', [
+    'cors' => 'https://example.com'
+]);
+
+// 完整配置
+$io = new SocketIOServer('0.0.0.0:8088', [
+    'cors' => [
+        'origin' => 'https://example.com',
+        'methods' => ['GET', 'POST', 'OPTIONS'],
+        'allowedHeaders' => ['my-custom-header', 'Content-Type'],
+        'credentials' => true
+    ]
+]);
+```
+
+#### CORS 配置选项
+
+| 选项 | 类型 | 默认值 | 描述 |
+| --- | --- | --- | --- |
+| `origin` | string/array | `*` | 允许的源 |
+| `methods` | array | `['GET', 'POST', 'OPTIONS']` | 允许的 HTTP 方法 |
+| `allowedHeaders` | array | `['Content-Type', 'Authorization']` | 允许的请求头 |
+| `credentials` | bool | `false` | 是否允许携带凭证 |
 
 #### 重要说明
 
@@ -474,6 +503,66 @@ public function __construct(string $listen, array $options = [])
 | `broadcast()` | 广播事件到除了自己以外的其他连接 |
 | `disconnect($close = false)` | 断开连接 |
 | `use(callable $middleware)` | 注册 Socket 实例级中间件 |
+
+#### Socket 属性
+
+| 属性 | 类型 | 描述 |
+| --- | --- | --- |
+| `id` | string | Socket ID (Session ID) |
+| `namespace` | string | 当前命名空间 |
+| `auth` | mixed | 认证信息 |
+| `handshake` | object | 握手信息对象 |
+| `data` | array | 自定义数据存储 |
+
+#### handshake 对象结构
+
+`socket.handshake` 对象包含完整的握手信息：
+
+```php
+$io->of('/chat')->on('connection', function ($socket) {
+    // 获取握手信息
+    $handshake = $socket->handshake;
+    
+    // 客户端 IP 地址
+    $clientIp = $handshake['address'];
+    
+    // 请求头
+    $headers = $handshake['headers'];
+    $userAgent = $headers['user-agent'] ?? 'Unknown';
+    $origin = $headers['origin'] ?? null;
+    
+    // 是否跨域
+    $isCrossDomain = $handshake['xdomain'];
+    
+    // 是否安全连接 (HTTPS/WSS)
+    $isSecure = $handshake['secure'];
+    
+    // 连接时间
+    $connectTime = $handshake['time'];
+    $issued = $handshake['issued']; // 时间戳（毫秒）
+    
+    // 请求 URL
+    $url = $handshake['url'];
+    
+    // 查询参数
+    $query = $handshake['query'];
+    
+    // 认证信息（如果客户端提供了）
+    $auth = $handshake['auth'];
+});
+```
+
+| 字段 | 类型 | 描述 |
+| --- | --- | --- |
+| `headers` | array | HTTP 请求头 |
+| `time` | string | 连接时间 (ISO 8601 格式) |
+| `issued` | int | 连接时间戳（毫秒） |
+| `address` | string | 客户端 IP 地址 |
+| `xdomain` | bool | 是否跨域请求 |
+| `secure` | bool | 是否安全连接 (HTTPS/WSS) |
+| `url` | string | 请求 URL |
+| `query` | array | 查询参数 |
+| `auth` | mixed | 认证信息 |
 
 ## 客户端示例
 

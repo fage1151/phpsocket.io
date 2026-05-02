@@ -297,87 +297,50 @@ class EventHandler
             'namespace' => $namespace
         ]);
 
-        // 将socket添加到命名空间
         if (isset($this->namespaceHandlers[$namespace])) {
             $this->namespaceHandlers[$namespace]['sockets'][$socket['id']] = $socket;
         }
 
-        // 调用连接处理器 - 首先检查通过SocketIOServer注册的真实连接处理器
-        $hasRealHandler = false;
+        $hasRealHandler = $socketIOServer && method_exists($socketIOServer, 'getNamespaceHandlers')
+            && isset($socketIOServer->getNamespaceHandlers()[$namespace]);
 
-        if ($socketIOServer && method_exists($socketIOServer, 'getNamespaceHandlers')) {
-            // 检查是否通过SocketIOServer注册了命名空间的连接处理器
-            $nsHandlers = $socketIOServer->getNamespaceHandlers();
-
-            if (isset($nsHandlers[$namespace])) {
-                $hasRealHandler = true;
-            }
+        if ($hasRealHandler || isset($this->namespaceHandlers[$namespace]['connect'])) {
+            $this->executeConnectionHandler($socket, $namespace, $socketIOServer);
         }
+    }
 
-        // 调用连接处理器 - 优先使用SocketIOServer注册的处理器
-        if ($socketIOServer && $hasRealHandler && method_exists($socketIOServer, 'getSocketIoCallback')) {
-            // 通过SocketIOServer注册的处理器 - 优先执行路径
-            $serverManager = $socketIOServer->getServerManager();
-            $roomManager = $socketIOServer->getRoomManager();
-            $adapter = $serverManager->getAdapter();
-
-            // 先尝试从socketIOServer获取已存在的Socket，避免创建多个实例
-            $sessionId = $socket['session']->sid;
-            $realSocket = null;
-            if (method_exists($socketIOServer, 'getOrCreateSocket')) {
-                $realSocket = $socketIOServer->getOrCreateSocket($socket['session'], $namespace);
-            }
-
-            // 如果没有getOrCreateSocket方法，再自己创建
-            if (null === $realSocket) {
-                $connection = $socket['connection'] ?? null;
-                $realSocket = new \PhpSocketIO\Socket($sessionId, $socket['namespace'], $socketIOServer, $connection);
-            }
-
-            // 集群环境下自动注册会话
-            if ($adapter) {
-                try {
-                    $adapter->register($socket['id']);
-                } catch (\Exception $e) {
-                    $this->logger?->error('Failed to register socket in adapter', [
-                        'socket_id' => $socket['id'],
-                        'error' => $e->getMessage(),
-                        'trace' => $e->getTraceAsString()
-                    ]);
-                }
-            }
-
-            // 调用SocketIOServer的连接处理器
-            $callback = $socketIOServer->getSocketIoCallback('connection', $namespace);
-            if ($callback instanceof \Closure || is_callable($callback)) {
-                $callback($realSocket);
-                return;
-            }
-        }
-
-        // 备用：处理传统EventHandler中的连接处理器
-        if (
-            isset($this->namespaceHandlers[$namespace]['connect']) &&
-            is_callable($this->namespaceHandlers[$namespace]['connect'])
-        ) {
-            if ($socketIOServer) {
-                // 先尝试获取已有的Socket，避免多个实例
-                $sessionId = isset($socket['session']) ? $socket['session']->sid : null;
-                $realSocket = null;
-                if (method_exists($socketIOServer, 'getOrCreateSocket')) {
-                    $realSocket = $socketIOServer->getOrCreateSocket($socket['session'], $namespace);
-                }
-
-                // 如果没有获取到，再创建
-                if (null === $realSocket) {
-                    $connection = $socket['connection'] ?? null;
-                    $realSocket = new \PhpSocketIO\Socket($sessionId, $socket['namespace'], $socketIOServer, $connection);
-                }
-
-                call_user_func($this->namespaceHandlers[$namespace]['connect'], $realSocket);
-            } else {
+    private function executeConnectionHandler(array $socket, string $namespace, ?SocketIOServer $socketIOServer): void
+    {
+        if (!$socketIOServer) {
+            if (isset($this->namespaceHandlers[$namespace]['connect']) && is_callable($this->namespaceHandlers[$namespace]['connect'])) {
                 call_user_func($this->namespaceHandlers[$namespace]['connect'], $socket);
             }
+            return;
+        }
+
+        $sessionId = $socket['session']->sid ?? null;
+        $realSocket = method_exists($socketIOServer, 'getOrCreateSocket')
+            ? $socketIOServer->getOrCreateSocket($socket['session'], $namespace)
+            : new Socket($sessionId, $namespace, $socketIOServer, $socket['connection'] ?? null);
+
+        $adapter = $socketIOServer->getServerManager()->getAdapter();
+        if ($adapter) {
+            try {
+                $adapter->register($socket['id']);
+            } catch (\Exception $e) {
+                $this->logger?->error('Failed to register socket in adapter', [
+                    'socket_id' => $socket['id'],
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+            }
+        }
+
+        $callback = $socketIOServer->getSocketIoCallback('connection', $namespace)
+            ?? ($this->namespaceHandlers[$namespace]['connect'] ?? null);
+
+        if ($callback instanceof \Closure || is_callable($callback)) {
+            $callback($realSocket);
         }
     }
 

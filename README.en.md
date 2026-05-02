@@ -302,6 +302,81 @@ $io->of('/chat')->on('connection', function ($socket) use ($io) {
 });
 ```
 
+### Socket Methods
+
+| Method | Description |
+| --- | --- |
+| `emit(string $event, mixed ...$args)` | Emit event to client |
+| `emitBinary(string $event, mixed ...$args)` | Emit binary event to client |
+| `emitWithAck($event, ...$args)` | Emit event with ACK, last parameter is callback |
+| `join(string $room)` | Join a room |
+| `leave(string $room)` | Leave a room |
+| `to($room)` | Create broadcaster targeting specified room |
+| `except($rooms)` | Create broadcaster excluding specified rooms |
+| `broadcast()` | Broadcast event to all connections except self |
+| `disconnect($close = false)` | Disconnect connection |
+| `use(callable $middleware)` | Register socket-level middleware |
+
+#### Socket Properties
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `id` | string | Socket ID (Session ID) |
+| `namespace` | string | Current namespace |
+| `auth` | mixed | Authentication data |
+| `handshake` | object | Handshake information object |
+| `data` | array | Custom data storage |
+
+#### handshake Object Structure
+
+The `socket.handshake` object contains complete handshake information:
+
+```php
+$io->of('/chat')->on('connection', function ($socket) {
+    // Get handshake information
+    $handshake = $socket->handshake;
+    
+    // Client IP address
+    $clientIp = $handshake['address'];
+    
+    // Request headers
+    $headers = $handshake['headers'];
+    $userAgent = $headers['user-agent'] ?? 'Unknown';
+    $origin = $headers['origin'] ?? null;
+    
+    // Is cross-domain
+    $isCrossDomain = $handshake['xdomain'];
+    
+    // Is secure connection (HTTPS/WSS)
+    $isSecure = $handshake['secure'];
+    
+    // Connection time
+    $connectTime = $handshake['time'];
+    $issued = $handshake['issued']; // Timestamp (milliseconds)
+    
+    // Request URL
+    $url = $handshake['url'];
+    
+    // Query parameters
+    $query = $handshake['query'];
+    
+    // Authentication data (if provided by client)
+    $auth = $handshake['auth'];
+});
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `headers` | array | HTTP request headers |
+| `time` | string | Connection time (ISO 8601 format) |
+| `issued` | int | Connection timestamp (milliseconds) |
+| `address` | string | Client IP address |
+| `xdomain` | bool | Is cross-domain request |
+| `secure` | bool | Is secure connection (HTTPS/WSS) |
+| `url` | string | Request URL |
+| `query` | array | Query parameters |
+| `auth` | mixed | Authentication data |
+
 ## Event Acknowledgments (ACK)
 
 **Important: ACK responses must use callback, don't use return!**
@@ -337,6 +412,35 @@ $io->of('/chat')->on('connection', function ($socket) {
 | `workerCount` | int | 1 | Number of worker processes |
 | `logLevel` | string | `LogLevel::INFO` | Log level (PSR-3) |
 | `ssl` | array | [] | SSL configuration (for HTTPS/WSS) |
+| `cors` | array/string | null | CORS configuration |
+
+### CORS Configuration
+
+```php
+// Simple configuration - specify allowed origin only
+$io = new SocketIOServer('0.0.0.0:8088', [
+    'cors' => 'https://example.com'
+]);
+
+// Full configuration
+$io = new SocketIOServer('0.0.0.0:8088', [
+    'cors' => [
+        'origin' => 'https://example.com',
+        'methods' => ['GET', 'POST', 'OPTIONS'],
+        'allowedHeaders' => ['my-custom-header', 'Content-Type'],
+        'credentials' => true
+    ]
+]);
+```
+
+#### CORS Options
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `origin` | string/array | `*` | Allowed origin(s) |
+| `methods` | array | `['GET', 'POST', 'OPTIONS']` | Allowed HTTP methods |
+| `allowedHeaders` | array | `['Content-Type', 'Authorization']` | Allowed request headers |
+| `credentials` | bool | `false` | Allow credentials (Cookies) |
 
 ## Starting the Server
 

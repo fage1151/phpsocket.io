@@ -58,6 +58,13 @@ final class Broadcaster
     private ?LoggerInterface $logger = null;
 
     /**
+     * Socket实例缓存
+     *
+     * @var array
+     */
+    private array $socketCache = [];
+
+    /**
      * 构造函数
      *
      * @param SocketIOServer|null $server 服务器实例
@@ -240,9 +247,14 @@ final class Broadcaster
         if (!$session) {
             return;
         }
-        // 直接通过session发送，避免创建新Socket实例
-        $socket = new Socket($sid, $this->namespace, $this->server);
-        $socket->session = $session;
+        if (!isset($this->socketCache[$sid])) {
+            $socket = new Socket($sid, $this->namespace, $this->server);
+            $socket->session = $session;
+            $this->socketCache[$sid] = $socket;
+        } else {
+            $socket = $this->socketCache[$sid];
+            $socket->session = $session;
+        }
         $socket->emit($event, ...$args);
     }
 

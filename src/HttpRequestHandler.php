@@ -15,17 +15,19 @@ final class HttpRequestHandler
 {
     private PollingHandler $pollingHandler;
     private EngineIOHandler $engineIoHandler;
+    private ServerManager $serverManager;
     private ?LoggerInterface $logger = null;
 
-    /** @var array<int, string> 有效的引擎IO数据包起始字符 */
     private const VALID_PACKET_CHARS = ['0', '1', '2', '3', '4', '5', '6', 'b'];
 
     public function __construct(
         PollingHandler $pollingHandler,
-        EngineIOHandler $engineIoHandler
+        EngineIOHandler $engineIoHandler,
+        ServerManager $serverManager
     ) {
         $this->pollingHandler = $pollingHandler;
         $this->engineIoHandler = $engineIoHandler;
+        $this->serverManager = $serverManager;
     }
 
     public function setLogger(LoggerInterface $logger): void
@@ -111,28 +113,15 @@ final class HttpRequestHandler
             $session->transport = 'websocket';
             $session->isWs = true;
             $session->connection = $connection;
-            $session->isPollingUpgrade = false; // 这是直接的 WebSocket 连接，不是从轮询升级来的
-            $session->upgraded = true; // 直接标记为升级完成
+            $session->isPollingUpgrade = false;
+            $session->upgraded = true;
 
-            // 优先使用 x-real-ip 头
-            $clientIp = null;
-            if (method_exists($req, 'header')) {
-                $xRealIp = $req->header('x-real-ip');
-                if ($xRealIp) {
-                    $clientIp = $xRealIp;
-                }
-            }
-
-            // 如果没有 x-real-ip，使用 Workerman 原生的 getRemoteIp()
-            if (!$clientIp) {
-                if (method_exists($connection, 'getRemoteIp')) {
-                    $clientIp = $connection->getRemoteIp();
-                }
-            }
-
+            $clientIp = $this->extractClientIp($connection, $req);
             if ($clientIp) {
                 $session->setRemoteIp($clientIp);
             }
+
+            $session->setHandshake($this->buildHandshakeData($connection, $req));
 
             $this->performWebSocketHandshake($connection, $req, $sid);
 
@@ -147,6 +136,88 @@ final class HttpRequestHandler
             ]);
             $connection->close();
         }
+    }
+
+    private function extractClientIp(\Workerman\Connection\TcpConnection $connection, mixed $req): ?string
+    {
+        if (method_exists($req, 'header')) {
+            $xRealIp = $req->header('x-real-ip');
+            if ($xRealIp) {
+                return $xRealIp;
+            }
+            $xForwardedFor = $req->header('x-forwarded-for');
+            if ($xForwardedFor) {
+                $ips = explode(',', $xForwardedFor);
+                return trim($ips[0]);
+            }
+        }
+
+        if (method_exists($connection, 'getRemoteIp')) {
+            return $connection->getRemoteIp();
+        }
+
+        return null;
+    }
+
+    private function buildHandshakeData(\Workerman\Connection\TcpConnection $connection, mixed $req): array
+    {
+        $headers = [];
+        if (method_exists($req, 'header')) {
+            $headerNames = [
+                'host', 'user-agent', 'accept', 'accept-language', 'accept-encoding',
+                'origin', 'referer', 'cookie', 'authorization', 'x-requested-with',
+                'sec-websocket-version', 'sec-websocket-key', 'sec-websocket-extensions',
+                'sec-websocket-protocol',
+            ];
+            foreach ($headerNames as $name) {
+                $value = $req->header($name);
+                if ($value !== null) {
+                    $headers[$name] = $value;
+                }
+            }
+        }
+
+        $query = [];
+        if (method_exists($req, 'get')) {
+            $queryParams = ['transport', 'sid', 'EIO', 't'];
+            foreach ($queryParams as $param) {
+                $value = $req->get($param);
+                if ($value !== null) {
+                    $query[$param] = $value;
+                }
+            }
+        }
+
+        $origin = $headers['origin'] ?? $headers['referer'] ?? null;
+        $host = $headers['host'] ?? '';
+        $xdomain = false;
+        if ($origin && $host) {
+            $originHost = parse_url($origin, PHP_URL_HOST);
+            $xdomain = $originHost !== $host;
+        }
+
+        $secure = false;
+        if (method_exists($connection, 'getRemoteAddress')) {
+            $remoteAddress = $connection->getRemoteAddress();
+            $secure = str_starts_with($remoteAddress, 'ssl://') || str_starts_with($remoteAddress, 'wss://');
+        }
+
+        $url = null;
+        if (method_exists($req, 'path')) {
+            $url = $req->path();
+            if (method_exists($req, 'queryString') && $req->queryString()) {
+                $url .= '?' . $req->queryString();
+            }
+        }
+
+        return [
+            'headers' => $headers,
+            'address' => $this->extractClientIp($connection, $req),
+            'xdomain' => $xdomain,
+            'secure' => $secure,
+            'url' => $url,
+            'query' => $query,
+        ];
     }
 
     private function performWebSocketHandshake(
@@ -200,28 +271,14 @@ final class HttpRequestHandler
         $session->transport = 'websocket';
         $session->isWs = true;
 
-        // 确保保存客户端地址
         if ($session->remoteIp === null) {
-            // 优先使用 x-real-ip 头
-            $clientIp = null;
-            if (method_exists($req, 'header')) {
-                $xRealIp = $req->header('x-real-ip');
-                if ($xRealIp) {
-                    $clientIp = $xRealIp;
-                }
-            }
-
-            // 如果没有 x-real-ip，使用 Workerman 原生的 getRemoteIp()
-            if (!$clientIp) {
-                if (method_exists($connection, 'getRemoteIp')) {
-                    $clientIp = $connection->getRemoteIp();
-                }
-            }
-
+            $clientIp = $this->extractClientIp($connection, $req);
             if ($clientIp) {
                 $session->setRemoteIp($clientIp);
             }
         }
+
+        $session->updateHandshake($this->buildHandshakeData($connection, $req));
 
         $this->performWebSocketHandshake($connection, $req, $sid);
 
@@ -236,12 +293,42 @@ final class HttpRequestHandler
     private function generateWebSocketHandshakeResponse(string $key): string
     {
         $newKey = base64_encode(sha1($key . "258EAFA5-E914-47DA-95CA-C5AB0DC85B11", true));
+
+        $corsHeaders = $this->buildCorsHeaders();
+
         return "HTTP/1.1 101 Switching Protocol\r\n"
             . "Upgrade: websocket\r\n"
             . "Sec-WebSocket-Version: 13\r\n"
             . "Connection: Upgrade\r\n"
             . "Sec-WebSocket-Accept: " . $newKey . "\r\n"
-            . "Access-Control-Allow-Origin: *\r\n\r\n";
+            . $corsHeaders
+            . "\r\n";
+    }
+
+    private function buildCorsHeaders(): string
+    {
+        $corsConfig = $this->serverManager->getCors();
+
+        if ($corsConfig === null) {
+            return "Access-Control-Allow-Origin: *\r\n";
+        }
+
+        $headers = '';
+        $origin = $corsConfig['origin'] ?? '*';
+        $headers .= "Access-Control-Allow-Origin: {$origin}\r\n";
+
+        if (isset($corsConfig['credentials']) && $corsConfig['credentials']) {
+            $headers .= "Access-Control-Allow-Credentials: true\r\n";
+        }
+
+        if (isset($corsConfig['allowedHeaders'])) {
+            $allowedHeaders = is_array($corsConfig['allowedHeaders'])
+                ? implode(', ', $corsConfig['allowedHeaders'])
+                : $corsConfig['allowedHeaders'];
+            $headers .= "Access-Control-Allow-Headers: {$allowedHeaders}\r\n";
+        }
+
+        return $headers;
     }
 
     public static function sendWsFrame(\Workerman\Connection\TcpConnection $connection, string $data, bool $isBinary = false, ?\Psr\Log\LoggerInterface $logger = null): bool

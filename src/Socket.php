@@ -67,14 +67,22 @@ class Socket
             throw new \InvalidArgumentException("事件名称不能为空");
         }
 
-        // 验证事件名称格式，只允许字母、数字、下划线和点
         if (!preg_match('/^[a-zA-Z0-9_.]+$/', $event)) {
             $this->logger?->error('事件名称格式无效', ['event' => $event]);
             throw new \InvalidArgumentException("事件名称格式无效");
         }
 
+        if (strlen($event) > 128) {
+            $this->logger?->error('事件名称过长', ['event_length' => strlen($event)]);
+            throw new \InvalidArgumentException("事件名称过长，最大128字符");
+        }
+
+        $reservedEvents = ['connect', 'disconnect', 'disconnecting', 'newListener', 'removeListener'];
+        if (in_array(strtolower($event), $reservedEvents, true)) {
+            $this->logger?->warning('使用保留事件名称', ['event' => $event]);
+        }
+
         try {
-            // 检查是否包含二进制数据并发送
             return $this->hasBinaryData($args)
                 ? $this->emitBinary($event, ...$args)
                 : $this->sendStandardEvent($event, ...$args);

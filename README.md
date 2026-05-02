@@ -337,6 +337,47 @@ $io->of('/chat')->on('connection', function ($socket) {
 | `workerCount` | int | 1 | Worker 进程数量 |
 | `logLevel` | string | `LogLevel::INFO` | 日志级别（PSR-3） |
 | `ssl` | array | [] | SSL 配置（用于 HTTPS/WSS） |
+| `cors` | array/string | null | CORS 跨域配置 |
+
+### CORS 配置
+
+支持以下几种配置方式：
+
+```php
+// 方式1：简单配置，仅指定允许的源
+$io = new SocketIOServer('0.0.0.0:8088', [
+    'cors' => 'https://example.com'
+]);
+
+// 方式2：完整配置
+$io = new SocketIOServer('0.0.0.0:8088', [
+    'cors' => [
+        'origin' => 'https://example.com',
+        'methods' => ['GET', 'POST', 'OPTIONS'],
+        'allowedHeaders' => ['my-custom-header', 'Content-Type'],
+        'credentials' => true
+    ]
+]);
+
+// 方式3：允许多个源（需要动态处理）
+$io = new SocketIOServer('0.0.0.0:8088', [
+    'cors' => [
+        'origin' => ['https://example.com', 'https://app.example.com'],
+        'methods' => ['GET', 'POST', 'OPTIONS'],
+        'allowedHeaders' => ['Content-Type', 'Authorization'],
+        'credentials' => true
+    ]
+]);
+```
+
+#### CORS 配置选项说明
+
+| 选项 | 类型 | 默认值 | 描述 |
+| --- | --- | --- | --- |
+| `origin` | string/array | `*` | 允许的源，可以是字符串或数组 |
+| `methods` | array | `['GET', 'POST', 'OPTIONS']` | 允许的 HTTP 方法 |
+| `allowedHeaders` | array | `['Content-Type', 'Authorization']` | 允许的请求头 |
+| `credentials` | bool | `false` | 是否允许携带凭证（Cookies） |
 
 ## 启动服务器
 

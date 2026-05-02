@@ -26,7 +26,6 @@ class SocketIOServer
     private ?HttpRequestHandler $httpRequestHandler;
     private ErrorHandler $errorHandler;
     private array $namespaceHandlers = [];
-    private ?string $sid = null;
     private ?LoggerInterface $logger = null;
     private array $sessionSocketMap = [];
     private ?string $listenAddress = null;
@@ -63,12 +62,34 @@ class SocketIOServer
 
     private function initializeComponents(array $options): void
     {
-        $this->serverManager = new ServerManager();
+        $this->serverManager = new ServerManager($this->normalizeCorsConfig($options));
         $this->roomManager = new RoomManager();
         $this->engineIoHandler = new EngineIOHandler($options);
         $this->eventHandler = new EventHandler(['server' => $this]);
         $this->pollingHandler = new PollingHandler($this->serverManager, $this->engineIoHandler);
-        $this->httpRequestHandler = new HttpRequestHandler($this->pollingHandler, $this->engineIoHandler);
+        $this->httpRequestHandler = new HttpRequestHandler($this->pollingHandler, $this->engineIoHandler, $this->serverManager);
+    }
+
+    private function normalizeCorsConfig(array $options): array
+    {
+        $config = $options;
+
+        if (isset($options['cors'])) {
+            $cors = $options['cors'];
+
+            if (is_string($cors)) {
+                $config['cors'] = ['origin' => $cors];
+            } elseif (is_array($cors)) {
+                $config['cors'] = [
+                    'origin' => $cors['origin'] ?? '*',
+                    'methods' => $cors['methods'] ?? ['GET', 'POST', 'OPTIONS'],
+                    'allowedHeaders' => $cors['allowedHeaders'] ?? ['Content-Type', 'Authorization'],
+                    'credentials' => $cors['credentials'] ?? false,
+                ];
+            }
+        }
+
+        return $config;
     }
 
     private function configureComponents(): void
@@ -131,9 +152,9 @@ class SocketIOServer
         $this->serverManager->setAdapter($adapter);
     }
 
-    public function getId(): ?string
+    public function getId(): string
     {
-        return $this->sid;
+        return spl_object_id($this) . ':' . getmypid();
     }
 
     public function isClusterEnabled(): bool
@@ -562,8 +583,13 @@ class SocketIOServer
 
         $session->namespaces[$namespace] = true;
 
+        if ($authData !== null) {
+            $session->updateHandshake(['auth' => $authData]);
+        }
+
         $sessionKey = "{$session->sid}:{$namespace}";
         $socket = $this->sessionSocketMap[$sessionKey] ??= new Socket($session->sid, $namespace, $this);
+        $socket->auth = $authData;
 
         $this->eventHandler->triggerConnect(
             [
