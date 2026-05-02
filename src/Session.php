@@ -17,11 +17,14 @@ final class Session
     private const SESSION_TTL = 86400;
     private const CACHE_SIZE = 1000;
     private const ACTIVE_TIMEOUT = 60;
+    private const RECOVERY_MAX_DURATION = 120;
+    private const RECOVERY_MAX_PACKETS = 1000;
 
     private static array $sessions = [];
     private static array $cache = [];
     private static array $cacheAccess = [];
     private static ?LoggerInterface $logger = null;
+    private static array $recoveryStore = [];
 
     public readonly string $sid;
     public string $transport = 'polling';
@@ -44,6 +47,9 @@ final class Session
     public mixed $pendingBinaryPlaceholder = null;
     public int $pendingBinaryCount = 0;
     public int $ackIdCounter = 0;
+    public ?string $pid = null;
+    public int $offsetCounter = 0;
+    public array $sentPackets = [];
 
     public static function setLogger(LoggerInterface $logger): void
     {
@@ -55,11 +61,17 @@ final class Session
         $this->validateSid($sid);
         $this->ensureSessionLimit();
         $this->sid = $sid;
+        $this->pid = $this->generatePid();
         $this->createdAt = time();
         $this->lastPong = $this->createdAt;
         $this->handshake = $this->createDefaultHandshake();
         self::$sessions[$sid] = $this;
         $this->manageCache();
+    }
+
+    private function generatePid(): string
+    {
+        return bin2hex(random_bytes(12));
     }
 
     private function createDefaultHandshake(): array
@@ -358,5 +370,87 @@ final class Session
         }
 
         self::remove($this->sid);
+    }
+
+    public function generateOffset(): string
+    {
+        $this->offsetCounter++;
+        return base64_encode(pack('JN', $this->offsetCounter, mt_rand()));
+    }
+
+    public function recordSentPacket(string $offset, string $packet): void
+    {
+        $this->sentPackets[] = [
+            'offset' => $offset,
+            'packet' => $packet,
+            'timestamp' => time(),
+        ];
+
+        if (count($this->sentPackets) > self::RECOVERY_MAX_PACKETS) {
+            array_shift($this->sentPackets);
+        }
+    }
+
+    public static function storeForRecovery(string $sid, array $rooms, array $data, ?string $pid = null): void
+    {
+        if (!$pid) {
+            return;
+        }
+
+        self::$recoveryStore[$pid] = [
+            'sid' => $sid,
+            'rooms' => $rooms,
+            'data' => $data,
+            'timestamp' => time(),
+        ];
+
+        self::cleanupRecoveryStore();
+    }
+
+    public static function tryRecover(?string $pid, ?string $offset): ?array
+    {
+        if (!$pid || !isset(self::$recoveryStore[$pid])) {
+            return null;
+        }
+
+        $stored = self::$recoveryStore[$pid];
+        $elapsed = time() - $stored['timestamp'];
+
+        if ($elapsed > self::RECOVERY_MAX_DURATION) {
+            unset(self::$recoveryStore[$pid]);
+            return null;
+        }
+
+        $missedPackets = [];
+        $session = self::get($stored['sid']);
+        if ($session && $offset) {
+            $foundOffset = false;
+            foreach ($session->sentPackets as $sentPacket) {
+                if ($foundOffset) {
+                    $missedPackets[] = $sentPacket['packet'];
+                } elseif ($sentPacket['offset'] === $offset) {
+                    $foundOffset = true;
+                }
+            }
+        }
+
+        unset(self::$recoveryStore[$pid]);
+
+        return [
+            'sid' => $stored['sid'],
+            'rooms' => $stored['rooms'],
+            'data' => $stored['data'],
+            'missedPackets' => $missedPackets,
+        ];
+    }
+
+    private static function cleanupRecoveryStore(): void
+    {
+        $now = time();
+        foreach (self::$recoveryStore as $pid => $data) {
+            if (($now - $data['timestamp']) > self::RECOVERY_MAX_DURATION) {
+                unset(self::$recoveryStore[$pid]);
+            }
+        }
     }
 }

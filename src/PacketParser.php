@@ -482,7 +482,11 @@ final class PacketParser
         if (isset($params['id'])) {
             $packet .= $params['id'];
         }
-        $packet .= json_encode(array_merge([$eventName], $data));
+        $dataArray = array_merge([$eventName], $data);
+        if (isset($params['offset'])) {
+            $dataArray[] = $params['offset'];
+        }
+        $packet .= json_encode($dataArray);
         return $packet;
     }
 

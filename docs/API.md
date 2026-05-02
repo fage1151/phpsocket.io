@@ -111,17 +111,19 @@ $io->in('room1')->to('room2')->emit('hello', 'room1 和 room2 的成员');
 $io->to('room1')->except('room2')->emit('hello');
 ```
 
-#### `io.local()`
-仅在本节点广播（集群模式）。
+#### `io.local()` / `$io->local`
+仅在本节点广播（集群模式）。支持方法调用和属性访问两种方式。
 
 ```php
+$io->local()->emit('hello');
 $io->local->emit('hello');
 ```
 
-#### `io.volatile()`
-标记为可丢弃事件（客户端未准备好时丢弃）。
+#### `io.volatile()` / `$io->volatile`
+标记为可丢弃事件（long polling 客户端有未发送队列时丢弃）。支持方法调用和属性访问。
 
 ```php
+$io->volatile()->emit('position', $x, $y);
 $io->volatile->emit('position', $x, $y);
 ```
 
@@ -132,11 +134,12 @@ $io->volatile->emit('position', $x, $y);
 $io->timeout(10000)->emit('some-event', function ($err, $responses) { ... });
 ```
 
-#### `io.compress(bool)`
+#### `io.compress(bool)` / `$io->compress`
 设置是否压缩。
 
 ```php
 $io->compress(true)->emit('hello');
+$io->compress->emit('hello');
 ```
 
 #### `io.fetchSockets(namespace)`
@@ -206,6 +209,9 @@ $io->setAdapter(new RedisAdapter($redisConfig));
 |------|------|------|
 | `io->sockets` | `SocketNamespace` | 主命名空间别名 |
 | `io->engine` | `EngineIOHandler` | Engine.IO 处理器 |
+| `io->local` | `Broadcaster` | 本地广播修饰符 |
+| `io->volatile` | `Broadcaster` | 可丢弃广播修饰符 |
+| `io->compress` | `Broadcaster` | 压缩广播修饰符 |
 
 ---
 
@@ -216,6 +222,7 @@ $io->setAdapter(new RedisAdapter($redisConfig));
 | 属性 | 类型 | 说明 |
 |------|------|------|
 | `$socket->sid` | `string` | 会话唯一标识 |
+| `$socket->id` | `string` | sid 别名 |
 | `$socket->namespace` | `string` | 所属命名空间 |
 | `$socket->auth` | `mixed` | 连接时的认证数据 |
 | `$socket->handshake` | `array` | 握手信息（headers, address, auth 等） |
@@ -223,6 +230,7 @@ $io->setAdapter(new RedisAdapter($redisConfig));
 | `$socket->connected` | `bool` | 是否已连接 |
 | `$socket->rooms` | `Set` | 所在房间集合 |
 | `$socket->broadcast` | `Broadcaster` | 广播器（排除自身） |
+| `$socket->nsp` | `SocketNamespace` | 所属命名空间实例 |
 | `$socket->conn` | `SocketConn` | 底层连接信息 |
 | `$socket->recovered` | `bool` | 是否恢复了连接状态 |
 
@@ -285,6 +293,13 @@ $socket->join(['room1', 'room2']);
 $socket->leave('room1');
 ```
 
+#### `socket.inRoom(room)`
+检查是否在指定房间。
+
+```php
+if ($socket->inRoom('room1')) { ... }
+```
+
 #### `socket.to(room)` / `socket.in(room)`
 设置广播目标房间（返回 Broadcaster，排除自身）。
 
@@ -303,7 +318,7 @@ $socket->to('room1')->except('room2')->emit('hello');
 
 ```php
 $socket->broadcast->emit('hello');           // 广播给除自己外的所有人
-$socket->volatile->emit('position', $x, $y); // 可丢弃事件
+$socket->volatile()->emit('position', $x, $y); // 可丢弃事件
 $socket->compress(true)->emit('hello');       // 压缩
 $socket->timeout(5000)->emit('hello', $cb);   // 确认超时
 ```
@@ -318,7 +333,8 @@ $socket->timeout(5000)->emit('hello', $cb);   // 确认超时
 ```php
 $socket->use(function (array $packet, callable $next): void {
     $eventName = $packet[0] ?? '';
-    if (in_array($eventName, ['forbidden-event'])) {
+    $allowedEvents = ['chat message', 'message'];
+    if (!in_array($eventName, $allowedEvents)) {
         return;
     }
     $next();
@@ -331,7 +347,9 @@ $socket->use(function (array $packet, callable $next): void {
 $socket->onAny(function (string $event, mixed ...$args) { ... });
 $socket->onAnyOutgoing(function (string $event, mixed ...$args) { ... });
 $socket->prependAny(function (string $event, mixed ...$args) { ... });
+$socket->prependAnyOutgoing(function (string $event, mixed ...$args) { ... });
 $socket->offAny($callback);
+$socket->offAnyOutgoing($callback);
 $socket->listenersAny();
 $socket->listenersAnyOutgoing();
 ```
@@ -363,7 +381,7 @@ $socket->disconnect(true);   // 关闭底层连接
 
 ### 方法
 
-与 Server 级别方法相同：`use()`, `on()`, `emit()`, `to()`, `in()`, `except()`, `fetchSockets()`, `socketsJoin()`, `socketsLeave()`, `disconnectSockets()`, `allSockets()`, `serverSideEmit()` 等。
+与 Server 级别方法相同：`use()`, `on()`, `off()`, `emit()`, `to()`, `in()`, `except()`, `fetchSockets()`, `allSockets()`, `socketsJoin()`, `socketsLeave()`, `disconnectSockets()`, `emitWithAck()`, `local()`, `volatile()`, `compress()`, `timeout()`, `serverSideEmit()` 等。
 
 ---
 
@@ -462,6 +480,20 @@ $io->setAdapter($adapter);
 
 ---
 
+## 传输层行为
+
+### WebSocket 升级
+
+1. 客户端首次通过 HTTP polling 连接 → 握手 → 开始长轮询
+2. 客户端发起 WebSocket 升级请求 → 握手成功 → 立即释放之前的 polling 连接
+3. 升级后任何后续的 HTTP polling 请求 → 立即回复 NOOP（`6`），不再 hold
+
+### 直接 WebSocket 连接
+
+客户端也可以直接使用 WebSocket 连接（不经过 polling），此时 `transport` 直接为 `websocket`。
+
+---
+
 ## 配置选项
 
 ```php
@@ -480,4 +512,72 @@ $io = new SocketIOServer('0.0.0.0:8088', [
         'local_pk' => '/path/to/key.pem',
     ],
 ]);
+```
+
+---
+
+## PHP 限制
+
+由于 PHP 没有原生 async/await 支持，以下功能与 JS 版 Socket.IO 存在差异：
+
+### `emitWithAck()` 行为差异
+
+**JS 版本**：返回 Promise，可 await 等待所有客户端响应。
+
+**PHP 版本**：
+- `socket->emitWithAck($event, ...$args, $callback)`：发送事件，客户端响应后执行 `$callback`
+- `io->emitWithAck($event, ...$args)`：广播事件，立即返回空数组（无法同步等待响应）
+
+```php
+// Socket 级别 - 回调会在客户端响应后执行
+$socket->emitWithAck('hello', 'world', function ($response) {
+    echo "客户端响应: " . json_encode($response) . "\n";
+});
+
+// Server 级别 - 立即返回，无法等待响应
+$responses = $io->emitWithAck('hello', 'world'); // 返回 []
+```
+
+### `serverSideEmitWithAck()` 未实现
+
+此方法依赖 Promise 异步等待，PHP 无法实现。
+
+### 动态命名空间不支持
+
+```php
+// JS 版本支持
+io.of(/^\/dynamic-\d+$/);
+
+// PHP 版本不支持正则/函数匹配，仅支持字符串
+$io->of('/admin');
+```
+
+### 连接恢复机制
+
+本实现完整支持 Socket.IO v4 连接状态恢复机制：
+
+- 断开连接时自动保存状态（rooms、data、sent packets）
+- 重连时客户端可通过 `pid` 和 `offset` 恢复状态
+- 自动恢复 rooms 和 data
+- 重发丢失的事件
+- `socket.recovered` 属性指示是否成功恢复
+
+```php
+$io->on('connection', function ($socket) {
+    if ($socket->recovered) {
+        echo "连接状态已恢复\n";
+        // 可以继续使用之前的数据和房间
+    }
+});
+```
+
+在客户端，启用连接恢复：
+```javascript
+const io = require('socket.io-client');
+const socket = io('http://localhost:8088', {
+    reconnection: true,
+    reconnectionDelay: 100,
+    reconnectionDelayMax: 500,
+    reconnectionAttempts: 10
+});
 ```

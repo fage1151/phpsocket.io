@@ -263,11 +263,13 @@ class SocketIOServer
                 'sid' => $session->sid
             ]);
 
-            $this->roomManager->removeSession($session->sid);
-
             foreach ($session->namespaces as $namespace => $auth) {
                 $sessionKey = "{$session->sid}:{$namespace}";
                 $socket = $this->sessionSocketMap[$sessionKey] ?? new Socket($session->sid, $namespace, $this);
+
+                $rooms = $this->roomManager->getSessionRooms($session->sid);
+                Session::storeForRecovery($session->sid, $rooms, $session->data, $session->pid);
+
                 $this->eventHandler->triggerDisconnect(
                     [
                         'id' => $sessionKey,
@@ -280,6 +282,7 @@ class SocketIOServer
                 unset($this->sessionSocketMap[$sessionKey]);
             }
 
+            $this->roomManager->removeSession($session->sid);
             Session::remove($session->sid);
         }
 
@@ -591,8 +594,17 @@ class SocketIOServer
         $socket->session = $session;
         $socket->handshake = $session->handshake;
 
-        $this->eventHandler->runMiddlewares($socket, function () use ($session, $namespace, $connection, $socket, $sessionKey): void {
+        $recoveryPid = is_array($authData) ? ($authData['pid'] ?? null) : null;
+        $recoveryOffset = is_array($authData) ? ($authData['offset'] ?? null) : null;
+
+        $this->eventHandler->runMiddlewares($socket, function () use ($session, $namespace, $connection, $socket, $sessionKey, $recoveryPid, $recoveryOffset): void {
             $session->namespaces[$namespace] = true;
+
+            $recovered = false;
+            if ($recoveryPid) {
+                $recovered = $this->tryRecoverState($socket, $session, $namespace, $recoveryPid, $recoveryOffset);
+            }
+            $socket->recovered = $recovered;
 
             $this->eventHandler->triggerConnect(
                 [
@@ -609,7 +621,8 @@ class SocketIOServer
             $socketIoPacket = PacketParser::buildSocketIOPacket('CONNECT', [
                 'namespace' => $namespace,
                 'data' => [
-                    'sid' => $session->sid
+                    'sid' => $session->sid,
+                    'pid' => $session->pid,
                 ]
             ]);
 
@@ -620,6 +633,35 @@ class SocketIOServer
 
             $session->send($socketIoPacket);
         });
+    }
+
+    private function tryRecoverState(Socket $socket, Session $session, string $namespace, string $pid, ?string $offset): bool
+    {
+        $recoveryData = Session::tryRecover($pid, $offset);
+        if ($recoveryData === null) {
+            return false;
+        }
+
+        $this->logger->info('连接状态恢复成功', [
+            'sid' => $session->sid,
+            'namespace' => $namespace,
+            'pid' => $pid,
+        ]);
+
+        $roomManager = $this->getRoomManager();
+        foreach ($recoveryData['rooms'] as $room) {
+            if ($room !== $session->sid) {
+                $roomManager->joinRoom($session->sid, $room);
+            }
+        }
+
+        $session->data = $recoveryData['data'];
+
+        foreach ($recoveryData['missedPackets'] as $packet) {
+            $session->send($packet);
+        }
+
+        return true;
     }
 
     private function handleDisconnectPacket(mixed $connection, Session $session, string $namespace): void
@@ -975,6 +1017,10 @@ class SocketIOServer
         return match ($name) {
             'sockets' => $this->of('/'),
             'engine' => $this->engineIoHandler,
+            'local' => $this->local(),
+            'volatile' => $this->volatile(),
+            'compress' => $this->compress(),
+            'timeout' => $this->timeout(0),
             default => null,
         };
     }

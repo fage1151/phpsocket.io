@@ -231,11 +231,16 @@ class Socket
             }
         }
 
+        $offset = $this->session->generateOffset();
+
         $packet = PacketParser::buildSocketIOPacket('EVENT', [
             'namespace' => $this->namespace,
             'event' => $event,
             'data' => $args,
+            'offset' => $offset,
         ]);
+
+        $this->session->recordSentPacket($offset, $packet);
         $this->session->send($packet);
         return $this;
     }
@@ -330,10 +335,11 @@ class Socket
         }
 
         $reason = $close ? 'server shutting down' : 'server namespace disconnect';
+        $sessionKey = "{$this->sid}:{$this->namespace}";
 
         if ($this->server) {
             $socketContext = [
-                'id' => $this->sid,
+                'id' => $sessionKey,
                 'session' => $this->session,
                 'connection' => $this->connection,
                 'namespace' => $this->namespace,
@@ -359,7 +365,7 @@ class Socket
 
         if ($this->server) {
             $socketContext = [
-                'id' => $this->sid,
+                'id' => $sessionKey,
                 'session' => $this->session,
                 'connection' => $this->connection,
                 'namespace' => $this->namespace,
@@ -369,7 +375,6 @@ class Socket
         }
 
         if ($this->server && $this->sid) {
-            $sessionKey = "{$this->sid}:{$this->namespace}";
             $this->server->cleanupSocketMap($sessionKey);
         }
 
