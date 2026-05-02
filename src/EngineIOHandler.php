@@ -93,6 +93,8 @@ class EngineIOHandler
                 return $this->handleBinary($packet, $connection, $session);
             case 'UPGRADE':
                 $session->upgraded = true;
+                $session->transport = 'websocket';
+                $session->isWs = true;
 
                 $this->logger?->info('Engine.IO 协议升级完成', [
                     'sid' => $session->sid,
@@ -364,12 +366,26 @@ class EngineIOHandler
      */
     private function cleanupSession(Session $session): void
     {
+        if ($this->eventHandler) {
+            foreach ($session->namespaces as $namespace => $auth) {
+                $this->eventHandler->triggerDisconnect(
+                    [
+                        'id' => $session->sid,
+                        'session' => $session,
+                        'namespace' => $namespace,
+                        'socket' => null,
+                    ],
+                    'ping timeout'
+                );
+            }
+        }
+
         if ($session->connection) {
             if (is_object($session->connection) && method_exists($session->connection, 'close')) {
                 try {
                     $session->connection->close();
                 } catch (Exception $e) {
-                    $this->logger->error('Failed to close connection', [
+                    $this->logger?->error('Failed to close connection', [
                         'sid' => $session->sid,
                         'error' => $e->getMessage(),
                         'trace' => $e->getTraceAsString()

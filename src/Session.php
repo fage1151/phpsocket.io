@@ -16,6 +16,7 @@ final class Session
     private const MAX_SESSIONS = 10000;
     private const SESSION_TTL = 86400;
     private const CACHE_SIZE = 1000;
+    private const ACTIVE_TIMEOUT = 60;
 
     private static array $sessions = [];
     private static array $cache = [];
@@ -171,21 +172,17 @@ final class Session
         $shouldUseWebSocket = $this->connection && method_exists($this->connection, 'send');
 
         if ($shouldUseWebSocket) {
-            $this->isWs = true;
-            $this->transport = 'websocket';
-
-            // 如果是从轮询升级来的，并且还没有升级完成，就加入队列
             if ($this->isPollingUpgrade && !$this->upgraded) {
                 $this->enqueue($packet);
                 return true;
             }
 
-            // 否则直接通过 WebSocket 发送
             try {
                 $result = HttpRequestHandler::sendWsFrame($this->connection, $packet, false, self::$logger);
-                // 如果是从轮询升级来的，发送成功后标记为升级完成
                 if ($this->isPollingUpgrade && !$this->upgraded) {
                     $this->upgraded = true;
+                    $this->transport = 'websocket';
+                    $this->isWs = true;
                 }
                 return $result;
             } catch (\Exception $e) {
@@ -259,17 +256,15 @@ final class Session
         }
     }
 
-    public static function sendToSession(string $sid, array $packet): bool
+    public static function sendToSession(string $sid, string $packet): bool
     {
         $session = self::get($sid);
         if (!$session) {
             return false;
         }
 
-        $engineIoPacket = '42' . json_encode($packet);
-
         try {
-            return $session->send($engineIoPacket);
+            return $session->send($packet);
         } catch (\Exception $e) {
             error_log('Session::sendToAll failed: ' . $e->getMessage() . ' for sid: ' . $session->sid);
             return false;
@@ -300,7 +295,7 @@ final class Session
 
     public function isActive(): bool
     {
-        return (time() - $this->lastPong) < self::SESSION_TTL;
+        return (time() - $this->lastPong) < self::ACTIVE_TIMEOUT;
     }
 
     /**

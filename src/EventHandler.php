@@ -103,28 +103,83 @@ class EventHandler
         $this->namespaceHandlers[$namespace]['middlewares'][] = $middleware;
     }
 
+    public function getNamespaceMiddlewares(string $namespace): array
+    {
+        $namespaceMiddlewares = $this->namespaceHandlers[$namespace]['middlewares'] ?? [];
+        return array_merge($this->globalMiddlewares, $namespaceMiddlewares);
+    }
+
     /**
      * 执行中间件链（全局 + 命名空间特定）
+     * Socket.IO v4 规范：中间件签名为 (Socket $socket, callable $next)
      */
-    public function runMiddlewares(array $socket, array $packet, callable $next): mixed
+    public function runMiddlewares(Socket $socket, callable $next): void
     {
-        $namespace = $socket['namespace'] ?? $packet['namespace'] ?? '/';
+        $namespace = $socket->namespace;
         $namespaceMiddlewares = $this->namespaceHandlers[$namespace]['middlewares'] ?? [];
 
-        // 合并中间件：先全局，再命名空间特定
         $allMiddlewares = array_merge($this->globalMiddlewares, $namespaceMiddlewares);
 
-        // 使用统一的中间件管道执行
-        return MiddlewarePipeline::execute(
-            $allMiddlewares,
-            function (mixed ...$args) use ($socket, $packet, $next) {
-                // 中间件执行完成后，调用原始的 $next 回调
-                // 这里不使用中间件传递的参数，而是使用原始的 $socket 和 $packet
-                return $next($socket, $packet);
-            },
-            $socket,
-            $packet
-        );
+        if (empty($allMiddlewares)) {
+            $next();
+            return;
+        }
+
+        $index = 0;
+        $middlewareCount = count($allMiddlewares);
+
+        $runNext = function (mixed $error = null) use (&$index, $middlewareCount, $allMiddlewares, $socket, $next, &$runNext, $namespace): void {
+            if ($error !== null) {
+                $this->logger?->debug('Middleware rejected', [
+                    'namespace' => $namespace,
+                    'sid' => $socket->sid,
+                    'error' => $error instanceof \Exception ? $error->getMessage() : (string)$error
+                ]);
+
+                $errorData = ['message' => $error instanceof \Exception ? $error->getMessage() : (string)$error];
+
+                if ($error instanceof \Exception && property_exists($error, 'data')) {
+                    $errorData['data'] = $error->data;
+                }
+
+                $errorPacket = PacketParser::buildSocketIOPacket('CONNECT_ERROR', [
+                    'namespace' => $namespace,
+                    'data' => $errorData,
+                ]);
+                $socket->session?->send($errorPacket);
+                return;
+            }
+
+            if ($index < $middlewareCount) {
+                $middleware = $allMiddlewares[$index];
+                $index++;
+                $middleware($socket, $runNext);
+            } else {
+                $next();
+            }
+        };
+
+        try {
+            $runNext();
+        } catch (\Exception $e) {
+            $this->logger?->debug('Middleware threw exception', [
+                'namespace' => $namespace,
+                'sid' => $socket->sid,
+                'error' => $e->getMessage()
+            ]);
+
+            $errorData = ['message' => $e->getMessage()];
+
+            if (property_exists($e, 'data')) {
+                $errorData['data'] = $e->data;
+            }
+
+            $errorPacket = PacketParser::buildSocketIOPacket('CONNECT_ERROR', [
+                'namespace' => $namespace,
+                'data' => $errorData,
+            ]);
+            $socket->session?->send($errorPacket);
+        }
     }
 
     /**
@@ -376,8 +431,6 @@ class EventHandler
             'reason' => $reason
         ]);
 
-        $this->triggerDisconnecting($socket, $reason);
-
         if (isset($this->namespaceHandlers[$namespace])) {
             unset($this->namespaceHandlers[$namespace]['sockets'][$socketId]);
         }
@@ -391,10 +444,11 @@ class EventHandler
             $adapter = $serverManager->getAdapter();
         }
 
-        if (!$adapter && isset($socket['socket']) && method_exists($socket['socket'], 'getServerManager')) {
-            $socketInstance = $socket['socket'];
-            $serverManager = $socketInstance->getServerManager();
-            $adapter = $serverManager->getAdapter();
+        if (!$adapter && isset($socket['socket']) && $socket['socket'] instanceof Socket) {
+            $socketServer = $socket['socket']->server ?? null;
+            if ($socketServer && method_exists($socketServer, 'getServerManager')) {
+                $adapter = $socketServer->getServerManager()->getAdapter();
+            }
         }
 
         if ($adapter && method_exists($adapter, 'unregister')) {
@@ -441,35 +495,38 @@ class EventHandler
     /**
      * 处理Socket.IO事件包
      */
-    public function handlePacket(array $packet, array $socket, ?callable $customHandler = null): mixed
+    public function handlePacket(array $packet, Socket $socket, ?callable $customHandler = null): mixed
     {
-        // 执行中间件链
-        return $this->runMiddlewares($socket, $packet, function (array $socket, array $packet) use ($customHandler) {
-            // 如果提供了自定义处理器，就使用它并直接返回 true
-            if ($customHandler) {
-                $customHandler($socket, $packet);
-                return true;
-            }
+        if ($customHandler) {
+            $customHandler($socket, $packet);
+            return true;
+        }
 
-            // 否则使用默认处理
-            switch ($packet['type']) {
-                case 'CONNECT':
-                    return $this->handleConnect($packet, $socket);
-                case 'DISCONNECT':
-                    return $this->handleDisconnect($packet, $socket);
-                case 'EVENT':
-                case 'BINARY_EVENT':
-                    return $this->handleEvent($packet, $socket);
-                case 'ACK':
-                case 'BINARY_ACK':
-                    return $this->handleAck($packet, $socket);
-                case 'CONNECT_ERROR':
-                    return $this->handleError($packet, $socket);
-                default:
-                    $this->sendError($socket, "Unknown packet type: {$packet['type']}");
-                    return false;
-            }
-        });
+        $socketInfo = [
+            'id' => $socket->sid,
+            'namespace' => $socket->namespace,
+            'session' => $socket->session,
+            'connection' => $socket->connection,
+            'socket' => $socket,
+        ];
+
+        switch ($packet['type']) {
+            case 'CONNECT':
+                return $this->handleConnect($packet, $socketInfo);
+            case 'DISCONNECT':
+                return $this->handleDisconnect($packet, $socketInfo);
+            case 'EVENT':
+            case 'BINARY_EVENT':
+                return $this->handleEvent($packet, $socketInfo);
+            case 'ACK':
+            case 'BINARY_ACK':
+                return $this->handleAck($packet, $socketInfo);
+            case 'CONNECT_ERROR':
+                return $this->handleError($packet, $socketInfo);
+            default:
+                $this->sendError($socketInfo, "Unknown packet type: {$packet['type']}");
+                return false;
+        }
     }
 
     /**
@@ -480,20 +537,12 @@ class EventHandler
         $namespace = $packet['namespace'] ?? '/';
         $auth = $packet['auth'] ?? null;
 
-        // 验证授权信息
         if (!$this->validateAuth($namespace, $auth)) {
             $this->sendError($socket, 'Authentication failed');
             return false;
         }
 
         $this->triggerConnect($socket, $namespace);
-
-        // 发送连接确认
-        $this->sendPacket($socket, [
-            'type' => 'CONNECT',
-            'namespace' => $namespace,
-            'data' => ['sid' => $socket['id']]
-        ]);
 
         return true;
     }
@@ -526,13 +575,11 @@ class EventHandler
             'socket' => $socket
         ]);
 
-        // Socket.IO v4协议验证
         if (!$eventName) {
             $this->sendError($socket, 'Event name is required');
             return false;
         }
 
-        // 使用共享的执行方法
         $found = $this->executeEventHandler($namespace, $eventName, $socket, $eventData, $ackId);
 
         if (!$found) {
@@ -621,13 +668,22 @@ class EventHandler
      */
     private function validateAuth(string $namespace, mixed $auth): bool
     {
-        // 简单的验证逻辑，可根据需求扩展
-        if (($namespace === '/' || $namespace === '/chat') && $auth === null) {
+        if (!isset($this->namespaceHandlers[$namespace]['authValidator'])) {
             return true;
         }
 
-        // 其他命名空间的认证逻辑
-        return is_array($auth) && isset($auth['token']) && !empty($auth['token']);
+        $validator = $this->namespaceHandlers[$namespace]['authValidator'];
+        if (is_callable($validator)) {
+            return (bool) $validator($auth);
+        }
+
+        return true;
+    }
+
+    public function setAuthValidator(string $namespace, callable $validator): void
+    {
+        $this->ensureNamespaceInitialized($namespace);
+        $this->namespaceHandlers[$namespace]['authValidator'] = $validator;
     }
 
     /**
@@ -635,60 +691,62 @@ class EventHandler
      */
     private function sendPacket(array $socket, array $packet): void
     {
-        // 检查socket中是否有session对象
         if (isset($socket['session']) && method_exists($socket['session'], 'send')) {
             $session = $socket['session'];
 
-            // 根据数据包类型构建不同的格式
             switch ($packet['type']) {
                 case 'ACK':
-                    // 构建ACK响应包
+                    $namespace = $packet['namespace'] ?? '/';
                     $ackId = $packet['id'] ?? null;
                     $ackData = $packet['data'] ?? [];
-
-                    // Socket.IO v4 ACK格式: 43[ackId, data1, data2, ...]
-                    $ackPacket = json_encode(array_merge([$ackId], $ackData));
-                    $engineIOPacket = '43' . $ackPacket;
-
-                    $session->send($engineIOPacket);
+                    $ackPacket = PacketParser::buildSocketIOPacket('ACK', [
+                        'namespace' => $namespace,
+                        'id' => $ackId,
+                        'data' => $ackData,
+                    ]);
+                    $session->send($ackPacket);
                     break;
 
                 case 'CONNECT':
-                    // 构建连接确认包
                     $namespace = $packet['namespace'] ?? '/';
-                    if ($namespace !== '/') {
-                        $connectPacket = '40' . $namespace . ',';
-                    } else {
-                        $connectPacket = '40';
-                    }
+                    $data = $packet['data'] ?? [];
+                    $connectPacket = PacketParser::buildSocketIOPacket('CONNECT', [
+                        'namespace' => $namespace,
+                        'data' => $data,
+                    ]);
                     $session->send($connectPacket);
                     break;
 
                 case 'EVENT':
-                    // 构建事件包
+                    $namespace = $packet['namespace'] ?? '/';
                     $eventName = $packet['event'] ?? '';
                     $eventData = $packet['data'] ?? [];
-
-                    $eventPacket = json_encode(array_merge([$eventName], $eventData));
-                    $engineIOPacket = '42' . $eventPacket;
-
-                    $session->send($engineIOPacket);
+                    $eventPacket = PacketParser::buildSocketIOPacket('EVENT', [
+                        'namespace' => $namespace,
+                        'event' => $eventName,
+                        'data' => $eventData,
+                    ]);
+                    $session->send($eventPacket);
                     break;
 
                 case 'CONNECT_ERROR':
-                    // 构建错误包
+                    $namespace = $packet['namespace'] ?? '/';
                     $error = $packet['error'] ?? 'Unknown error';
-                    $errorPacket = json_encode(['error' => $error]);
-                    $engineIOPacket = '44' . $errorPacket;
-
-                    $session->send($engineIOPacket);
+                    $errorPacket = PacketParser::buildSocketIOPacket('CONNECT_ERROR', [
+                        'namespace' => $namespace,
+                        'data' => ['message' => $error],
+                    ]);
+                    $session->send($errorPacket);
                     break;
 
                 default:
-                    // 默认处理
-                    $defaultPacket = json_encode($packet);
-                    $engineIOPacket = '42' . $defaultPacket;
-                    $session->send($engineIOPacket);
+                    $namespace = $packet['namespace'] ?? '/';
+                    $defaultPacket = PacketParser::buildSocketIOPacket('EVENT', [
+                        'namespace' => $namespace,
+                        'event' => $packet['type'],
+                        'data' => $packet,
+                    ]);
+                    $session->send($defaultPacket);
                     break;
             }
         }
@@ -711,21 +769,16 @@ class EventHandler
      */
     private function sendAck(array $socket, string $namespace, int $ackId, mixed $data): void
     {
-        // 直接构建并发送ACK数据包
         if (isset($socket['session']) && method_exists($socket['session'], 'send')) {
             $session = $socket['session'];
-
-            // 构建ACK数据
-            $ackData = [$data];
-            $ackPacket = json_encode($ackData);
-
-            // 构建Engine.IO数据包
-            $engineIOPacket = $this->buildAckEngineIOPacket($namespace, $ackId, $ackPacket);
-
-            // 发送数据包
-            $this->sendWebSocketMessage($session, $engineIOPacket);
+            $ackData = is_array($data) ? $data : [$data];
+            $ackPacket = PacketParser::buildSocketIOPacket('ACK', [
+                'namespace' => $namespace,
+                'id' => $ackId,
+                'data' => $ackData,
+            ]);
+            $session->send($ackPacket);
         } else {
-            // 回退到sendPacket方法
             $ackData = is_array($data) ? $data : [$data];
             $this->sendPacket($socket, [
                 'type' => 'ACK',
@@ -736,41 +789,6 @@ class EventHandler
         }
     }
 
-    /**
-     * 构建ACK的Engine.IO数据包
-     */
-    private function buildAckEngineIOPacket(string $namespace, int $ackId, string $ackPacket): string
-    {
-        if ($namespace !== '/') {
-            return '43' . $namespace . ',' . $ackId . $ackPacket;
-        } else {
-            return '43' . $ackId . $ackPacket;
-        }
-    }
-
-    /**
-     * 发送WebSocket消息
-     */
-    private function sendWebSocketMessage($session, string $message): void
-    {
-        if (!method_exists($session, 'send')) {
-            return;
-        }
-
-        try {
-            $session->send($message);
-        } catch (\Exception $e) {
-            $this->logger?->error('Failed to send WebSocket message', [
-                'sid' => $session->sid ?? 'unknown',
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-        }
-    }
-
-    /**
-     * 存储ACK回调函数
-     */
     public function storeAckCallback(array $socket, string $namespace, int $ackId, callable $callback): void
     {
         $callbackKey = "{$socket['id']}:{$namespace}:{$ackId}";

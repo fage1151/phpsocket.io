@@ -363,6 +363,29 @@ final class RedisAdapter implements AdapterInterface
         $this->initialized = false;
     }
 
+    public function serverSideEmit(string $eventName, array $args = [], ?callable $ack = null): void
+    {
+        if (!$this->redis || !$this->initialized) {
+            return;
+        }
+
+        $channel = "{$this->prefix}server_side_emit";
+        $message = json_encode([
+            'eventName' => $eventName,
+            'args' => $args,
+            'sourcePid' => $this->processId,
+        ]);
+
+        try {
+            $this->redis->publish($channel, $message);
+        } catch (\Exception $e) {
+            $this->logger?->error('Failed to serverSideEmit via Redis', [
+                'error' => $e->getMessage(),
+                'eventName' => $eventName,
+            ]);
+        }
+    }
+
     public function setLogger(LoggerInterface $logger): void
     {
         $this->logger = $logger;

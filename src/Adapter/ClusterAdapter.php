@@ -620,6 +620,22 @@ final class ClusterAdapter implements AdapterInterface
         $this->initialized = false;
     }
 
+    public function serverSideEmit(string $eventName, array $args = [], ?callable $ack = null): void
+    {
+        $channel = "{$this->prefix}server_side_emit";
+        $message = json_encode([
+            'eventName' => $eventName,
+            'args' => $args,
+            'sourcePid' => $this->processId,
+        ]);
+
+        if ($message === false) {
+            return;
+        }
+
+        $this->publishBatch($channel, ['data' => $message]);
+    }
+
     public function setLogger(LoggerInterface $logger): void
     {
         $this->logger = $logger;

@@ -161,11 +161,11 @@ final class Broadcaster
         );
     }
 
-    public function emit(string $event, mixed ...$args): ?SocketIOServer
+    public function emit(string $event, mixed ...$args): bool
     {
         if (!$this->server) {
             $this->logger?->warning('Broadcaster未关联服务器，无法发送事件', ['event' => $event]);
-            return null;
+            return false;
         }
 
         try {
@@ -174,7 +174,7 @@ final class Broadcaster
             } else {
                 $this->emitToAll($event, $args);
             }
-            return $this->server;
+            return true;
         } catch (\Exception $e) {
             $this->logger?->error('Broadcaster发送事件失败', [
                 'event' => $event,
@@ -201,7 +201,7 @@ final class Broadcaster
     {
         $adapter = $this->server->getAdapter();
 
-        if ($adapter) {
+        if ($adapter && !$this->local && empty($this->exceptRooms)) {
             $packetArray = $this->buildEventPacket($event, $args);
             foreach ($this->targetRooms as $room) {
                 $adapter->to($room, $packetArray);
@@ -213,9 +213,18 @@ final class Broadcaster
         foreach ($this->targetRooms as $room) {
             $members = $roomManager->getRoomMembers($room);
             foreach ($members as $sid) {
-                if (!$this->shouldExclude($sid)) {
-                    $this->emitToSocket($sid, $event, $args);
+                if ($this->shouldExclude($sid)) {
+                    continue;
                 }
+                $session = Session::get($sid);
+                if (!$session) {
+                    continue;
+                }
+                $socket = $this->server->getOrCreateSocket($session, $this->namespace);
+                if ($this->isInExceptRoom($socket)) {
+                    continue;
+                }
+                $this->emitToSocketInstance($socket, $event, $args);
             }
         }
     }
@@ -223,7 +232,7 @@ final class Broadcaster
     private function emitToAll(string $event, array $args): void
     {
         $adapter = $this->server->getAdapter();
-        if ($adapter) {
+        if ($adapter && !$this->local && empty($this->exceptRooms)) {
             $packetArray = $this->buildEventPacket($event, $args);
             $adapter->broadcast($packetArray);
             return;
@@ -237,18 +246,24 @@ final class Broadcaster
             if ($this->isInExceptRoom($socket)) {
                 continue;
             }
-            $socket->emit($event, ...$args);
+            $this->emitToSocketInstance($socket, $event, $args);
         }
     }
 
-    private function emitToSocket(string $sid, string $event, array $args): void
+    private function emitToSocketInstance(Socket $socket, string $event, array $args): void
     {
-        $session = Session::get($sid);
-        if (!$session) {
-            return;
+        if ($this->volatile) {
+            $session = $socket->session;
+            if ($session && $session->transport === 'polling' && !empty($session->pollingQueue)) {
+                return;
+            }
         }
-        $socket = $this->server->getOrCreateSocket($session, $this->namespace);
-        $socket->emit($event, ...$args);
+
+        if ($this->timeout !== null) {
+            $socket->timeout($this->timeout)->emit($event, ...$args);
+        } else {
+            $socket->emit($event, ...$args);
+        }
     }
 
     private function shouldExclude(string $sid): bool
@@ -264,5 +279,94 @@ final class Broadcaster
             }
         }
         return false;
+    }
+
+    public function fetchSockets(): array
+    {
+        if (!$this->server) {
+            return [];
+        }
+
+        $sockets = $this->server->fetchSockets($this->namespace);
+
+        $result = [];
+        foreach ($sockets as $socket) {
+            if ($this->shouldExclude($socket->sid)) {
+                continue;
+            }
+            if (!empty($this->targetRooms)) {
+                $inTargetRoom = false;
+                foreach ($this->targetRooms as $room) {
+                    if ($socket->inRoom($room)) {
+                        $inTargetRoom = true;
+                        break;
+                    }
+                }
+                if (!$inTargetRoom) {
+                    continue;
+                }
+            }
+            if ($this->isInExceptRoom($socket)) {
+                continue;
+            }
+            $result[] = $socket;
+        }
+
+        return $result;
+    }
+
+    public function socketsJoin(string|array $rooms): void
+    {
+        $sockets = $this->fetchSockets();
+        $roomList = is_array($rooms) ? $rooms : [$rooms];
+
+        foreach ($sockets as $socket) {
+            foreach ($roomList as $room) {
+                $socket->join($room);
+            }
+        }
+    }
+
+    public function socketsLeave(string|array $rooms): void
+    {
+        $sockets = $this->fetchSockets();
+        $roomList = is_array($rooms) ? $rooms : [$rooms];
+
+        foreach ($sockets as $socket) {
+            foreach ($roomList as $room) {
+                $socket->leave($room);
+            }
+        }
+    }
+
+    public function disconnectSockets(bool $close = false): void
+    {
+        $sockets = $this->fetchSockets();
+        foreach ($sockets as $socket) {
+            $socket->disconnect($close);
+        }
+    }
+
+    public function emitWithAck(string $event, mixed ...$args): array
+    {
+        $sockets = $this->fetchSockets();
+        $responses = [];
+
+        foreach ($sockets as $socket) {
+            $socket->emitWithAck($event, ...$args);
+            $responses[] = null;
+        }
+
+        return $responses;
+    }
+
+    public function allSockets(): Set
+    {
+        $sockets = $this->fetchSockets();
+        $sids = [];
+        foreach ($sockets as $socket) {
+            $sids[] = $socket->sid;
+        }
+        return new Set($sids);
     }
 }

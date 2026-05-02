@@ -60,11 +60,10 @@ final class SocketNamespace
         return $this;
     }
 
-    public function emit(string $event, mixed ...$args): self
+    public function emit(string $event, mixed ...$args): bool
     {
         $broadcaster = new Broadcaster($this->server, $this->name);
-        $broadcaster->emit($event, ...$args);
-        return $this;
+        return $broadcaster->emit($event, ...$args);
     }
 
     public function to(string|array $room): Broadcaster
@@ -112,24 +111,91 @@ final class SocketNamespace
         return $this->server->allSockets($this->name);
     }
 
-    public function socketsJoin(string|array $rooms): self
+    public function socketsJoin(string|array $rooms): void
     {
         $this->server->socketsJoin($rooms, $this->name);
-        return $this;
     }
 
-    public function socketsLeave(string|array $rooms): self
+    public function socketsLeave(string|array $rooms): void
     {
         $this->server->socketsLeave($rooms, $this->name);
-        return $this;
     }
 
     public function __get(string $name): mixed
     {
         return match ($name) {
             'adapter' => $this->getAdapter(),
-            'sockets' => $this,
+            'sockets' => $this->getSocketsMap(),
+            'name' => $this->name,
             default => null,
         };
+    }
+
+    public function getSocketsMap(): array
+    {
+        $sockets = [];
+        $activeSessions = Session::all();
+
+        foreach ($activeSessions as $sid => $session) {
+            if (isset($session->namespaces[$this->name]) && $session->namespaces[$this->name]) {
+                $socket = $this->server->getOrCreateSocket($session, $this->name);
+                $sockets[$sid] = $socket;
+            }
+        }
+
+        return $sockets;
+    }
+
+    public function getConnectedCount(): int
+    {
+        $count = 0;
+        foreach (Session::all() as $session) {
+            if (isset($session->namespaces[$this->name]) && $session->namespaces[$this->name]) {
+                $count++;
+            }
+        }
+        return $count;
+    }
+
+    public function disconnectSockets(bool $close = false): void
+    {
+        $sockets = $this->fetchSockets();
+        foreach ($sockets as $socket) {
+            $socket->disconnect($close);
+        }
+    }
+
+    public function emitWithAck(string $event, mixed ...$args): array
+    {
+        $sockets = $this->fetchSockets();
+        $responses = [];
+
+        foreach ($sockets as $socket) {
+            $socket->emitWithAck($event, ...$args);
+            $responses[] = null;
+        }
+
+        return $responses;
+    }
+
+    public function local(): Broadcaster
+    {
+        $broadcaster = new Broadcaster($this->server, $this->name);
+        return $broadcaster->local();
+    }
+
+    public function serverSideEmit(string $event, mixed ...$args): void
+    {
+        $adapter = $this->server->getAdapter();
+        if ($adapter && method_exists($adapter, 'serverSideEmit')) {
+            $adapter->serverSideEmit($event, $args);
+            return;
+        }
+
+        $this->server->getLogger()->debug('serverSideEmit (single process)', [
+            'namespace' => $this->name,
+            'event' => $event,
+            'args_count' => count($args)
+        ]);
     }
 }

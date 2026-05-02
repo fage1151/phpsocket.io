@@ -16,14 +16,6 @@ use PhpSocketIO\Enum\SocketPacketType;
  */
 final class PacketParser
 {
-    private const CACHE_MAX = 100;
-
-    /** @var array<string, string> 缓存 */
-    private static array $packetCache = [];
-
-    /** @var array<string, int> 缓存访问时间 */
-    private static array $cacheAccess = [];
-
     /**
      * 解析 Engine.IO 数据包
      *
@@ -412,13 +404,6 @@ final class PacketParser
      */
     public static function buildSocketIOPacket(string $type, array $params = []): string
     {
-        $cacheKey = $type . json_encode($params);
-
-        if (isset(self::$packetCache[$cacheKey])) {
-            self::$cacheAccess[$cacheKey] = time();
-            return self::$packetCache[$cacheKey];
-        }
-
         $enumType = null;
         foreach (SocketPacketType::cases() as $case) {
             if ($case->name === $type) {
@@ -428,7 +413,6 @@ final class PacketParser
         }
         $typeCode = $enumType !== null ? $enumType->value : SocketPacketType::EVENT->value;
         
-        // Engine.IO MESSAGE 类型前缀 (4)
         $packet = '4' . (string)$typeCode;
         $namespace = $params['namespace'] ?? '/';
 
@@ -447,31 +431,7 @@ final class PacketParser
 
         $result = self::buildPacketByType($packet, $enumType ?? SocketPacketType::EVENT, $params);
 
-        self::$packetCache[$cacheKey] = $result;
-        self::$cacheAccess[$cacheKey] = time();
-
-        if (count(self::$packetCache) > self::CACHE_MAX) {
-            self::cleanupCache();
-        }
-
         return $result;
-    }
-
-    /**
-     * 清理缓存
-     *
-     * @return void
-     */
-    private static function cleanupCache(): void
-    {
-        asort(self::$cacheAccess);
-        $sortedKeys = array_keys(self::$cacheAccess);
-        $itemsToRemove = count(self::$packetCache) - self::CACHE_MAX;
-
-        for ($i = 0; $i < $itemsToRemove && $i < count($sortedKeys); $i++) {
-            $keyToRemove = $sortedKeys[$i];
-            unset(self::$packetCache[$keyToRemove], self::$cacheAccess[$keyToRemove]);
-        }
     }
 
     /**
@@ -559,7 +519,13 @@ final class PacketParser
      */
     private static function buildErrorPacket(string $packet, array $params): string
     {
-        $packet .= json_encode(['message' => $params['error'] ?? 'Unknown error']);
+        if (isset($params['data'])) {
+            $packet .= json_encode($params['data']);
+        } elseif (isset($params['error'])) {
+            $packet .= json_encode(['message' => $params['error']]);
+        } else {
+            $packet .= json_encode(['message' => 'Unknown error']);
+        }
         return $packet;
     }
 

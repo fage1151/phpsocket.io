@@ -34,6 +34,7 @@ class Socket
     private array $anyListeners = [];
     private array $anyOutgoingListeners = [];
     public bool $recovered = false;
+    private array $socketEventHandlers = [];
 
     public function __construct(
         ?string $sid = null,
@@ -110,45 +111,55 @@ class Socket
 
     public function isConnected(): bool
     {
-        return $this->session !== null && $this->session->upgraded;
+        return $this->session !== null && $this->session->isActive();
     }
 
     public function emit(string $event, mixed ...$args): self
     {
         if (empty($event)) {
-            $this->logger?->error('事件名称不能为空');
             throw new \InvalidArgumentException('事件名称不能为空');
         }
 
         if (!preg_match('/^[a-zA-Z0-9_.]+$/', $event)) {
-            $this->logger?->error('事件名称格式无效', ['event' => $event]);
             throw new \InvalidArgumentException('事件名称格式无效');
         }
 
         if (strlen($event) > 128) {
-            $this->logger?->error('事件名称过长', ['event_length' => strlen($event)]);
             throw new \InvalidArgumentException('事件名称过长，最大128字符');
         }
 
-        $reservedEvents = ['connect', 'disconnect', 'disconnecting', 'newListener', 'removeListener'];
+        $reservedEvents = ['connect', 'connect_error', 'disconnect', 'disconnecting', 'newListener', 'removeListener'];
         if (in_array(strtolower($event), $reservedEvents, true)) {
-            $this->logger?->warning('使用保留事件名称', ['event' => $event]);
+            throw new \InvalidArgumentException("Cannot emit reserved event: {$event}");
+        }
+
+        $ackCallback = null;
+        if (!empty($args) && is_callable(end($args))) {
+            $ackCallback = array_pop($args);
         }
 
         try {
-            return $this->hasBinaryData($args)
-                ? $this->emitBinary($event, ...$args)
-                : $this->sendStandardEvent($event, ...$args);
+            if ($ackCallback !== null) {
+                $allArgs = array_merge([$event], $args, [$ackCallback]);
+                call_user_func_array([$this, 'emitWithAck'], $allArgs);
+            } else {
+                if ($this->hasBinaryData($args)) {
+                    $this->emitBinary($event, ...$args);
+                } else {
+                    $this->sendStandardEvent($event, ...$args);
+                }
+            }
         } catch (\Exception $e) {
             $this->logger?->error('发送事件失败', [
                 'event' => $event,
                 'sid' => $this->sid,
                 'namespace' => $this->namespace,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
             throw $e;
         }
+
+        return $this;
     }
 
     public function emitBinary(string $event, mixed ...$args): self
@@ -231,17 +242,23 @@ class Socket
 
     public function emitWithAck(string $event, mixed ...$args): void
     {
-        $callback = array_pop($args);
-        if (!is_callable($callback)) {
-            return;
+        $callback = null;
+        if (!empty($args) && is_callable(end($args))) {
+            $callback = array_pop($args);
         }
 
         if (!$this->session) {
             return;
         }
 
+        if ($callback === null) {
+            $this->emit($event, ...$args);
+            return;
+        }
+
         $ackId = $this->session->ackIdCounter++;
-        $packet = PacketParser::buildSocketIOPacket('ACK', [
+
+        $packet = PacketParser::buildSocketIOPacket('EVENT', [
             'namespace' => $this->namespace,
             'event' => $event,
             'data' => $args,
@@ -312,6 +329,8 @@ class Socket
             return $this;
         }
 
+        $reason = $close ? 'server shutting down' : 'server namespace disconnect';
+
         if ($this->server) {
             $socketContext = [
                 'id' => $this->sid,
@@ -320,12 +339,14 @@ class Socket
                 'namespace' => $this->namespace,
                 'socket' => $this,
             ];
-            $this->server->getEventHandler()->triggerDisconnecting($socketContext, 'server namespace disconnect');
+            $this->server->getEventHandler()->triggerDisconnecting($socketContext, $reason);
         }
 
         if ($this->server && $this->sid) {
             $this->server->getRoomManager()->leaveAllRooms($this->sid);
         }
+
+        unset($this->session->namespaces[$this->namespace]);
 
         if ($close) {
             $this->session->close();
@@ -344,7 +365,12 @@ class Socket
                 'namespace' => $this->namespace,
                 'socket' => $this,
             ];
-            $this->server->getEventHandler()->triggerDisconnect($socketContext, 'server namespace disconnect');
+            $this->server->getEventHandler()->triggerDisconnect($socketContext, $reason);
+        }
+
+        if ($this->server && $this->sid) {
+            $sessionKey = "{$this->sid}:{$this->namespace}";
+            $this->server->cleanupSocketMap($sessionKey);
         }
 
         return $this;
@@ -360,21 +386,16 @@ class Socket
 
     public function on(string $event, callable $callback): self
     {
-        if (!$this->server) {
-            throw new \RuntimeException('Socket实例未关联到服务器');
+        if (!isset($this->socketEventHandlers[$event])) {
+            $this->socketEventHandlers[$event] = [];
         }
-
-        $this->server->getEventHandler()->on($event, $callback, $this->namespace);
+        $this->socketEventHandlers[$event][] = $callback;
 
         return $this;
     }
 
     public function once(string $event, callable $callback): self
     {
-        if (!$this->server) {
-            throw new \RuntimeException('Socket实例未关联到服务器');
-        }
-
         $onceHandler = new class ($event, $callback, $this) {
             public string $event;
             /** @var callable */
@@ -398,28 +419,38 @@ class Socket
         };
 
         $this->onceHandlers[$event][] = $onceHandler;
-        $this->server->getEventHandler()->on($event, $onceHandler->wrappedCallback, $this->namespace);
+
+        if (!isset($this->socketEventHandlers[$event])) {
+            $this->socketEventHandlers[$event] = [];
+        }
+        $this->socketEventHandlers[$event][] = $onceHandler->wrappedCallback;
 
         return $this;
     }
 
     public function off(string $event, ?callable $callback = null): self
     {
-        if (!$this->server) {
-            return $this;
-        }
-
-        $eventHandler = $this->server->getEventHandler();
-
         if ($callback === null) {
-            $eventHandler->removeEventHandler($this->namespace, $event);
+            unset($this->socketEventHandlers[$event]);
             unset($this->onceHandlers[$event]);
         } else {
-            $eventHandler->removeEventHandler($this->namespace, $event, $callback);
+            if (isset($this->socketEventHandlers[$event])) {
+                $index = array_search($callback, $this->socketEventHandlers[$event], true);
+                if ($index !== false) {
+                    unset($this->socketEventHandlers[$event][$index]);
+                    $this->socketEventHandlers[$event] = array_values($this->socketEventHandlers[$event]);
+                }
+            }
 
             foreach ($this->onceHandlers[$event] ?? [] as $index => $onceCb) {
                 if ($onceCb->callback === $callback || $onceCb->wrappedCallback === $callback) {
-                    $eventHandler->removeEventHandler($this->namespace, $event, $onceCb->wrappedCallback);
+                    if (isset($this->socketEventHandlers[$event])) {
+                        $idx = array_search($onceCb->wrappedCallback, $this->socketEventHandlers[$event], true);
+                        if ($idx !== false) {
+                            unset($this->socketEventHandlers[$event][$idx]);
+                            $this->socketEventHandlers[$event] = array_values($this->socketEventHandlers[$event]);
+                        }
+                    }
                     unset($this->onceHandlers[$event][$index]);
                 }
             }
@@ -430,20 +461,11 @@ class Socket
 
     public function removeAllListeners(?string $event = null): self
     {
-        if (!$this->server) {
-            return $this;
-        }
-
-        $eventHandler = $this->server->getEventHandler();
-
         if ($event !== null) {
-            $eventHandler->removeEventHandler($this->namespace, $event);
+            unset($this->socketEventHandlers[$event]);
             unset($this->onceHandlers[$event]);
         } else {
-            $allHandlers = $eventHandler->getAllEventHandlers($this->namespace);
-            foreach (array_keys($allHandlers) as $eventName) {
-                $eventHandler->removeEventHandler($this->namespace, $eventName);
-            }
+            $this->socketEventHandlers = [];
             $this->onceHandlers = [];
         }
 
@@ -452,21 +474,104 @@ class Socket
 
     public function listeners(string $event): array
     {
-        if (!$this->server) {
-            return [];
-        }
-
-        $handler = $this->server->getEventHandler()->getEventHandler($this->namespace, $event);
-        return $handler !== null ? [$handler] : [];
+        return $this->socketEventHandlers[$event] ?? [];
     }
 
     public function hasListeners(string $event): bool
     {
-        if (!$this->server) {
-            return false;
+        return !empty($this->socketEventHandlers[$event]);
+    }
+
+    public function getSocketEventHandlers(): array
+    {
+        return $this->socketEventHandlers;
+    }
+
+    public function handleEvent(string $event, array $args, ?int $ackId = null): void
+    {
+        foreach ($this->anyListeners as $listener) {
+            try {
+                $listener($event, ...$args);
+            } catch (\Exception $e) {
+                $this->logger?->error('Catch-all listener error', [
+                    'event' => $event,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
-        return $this->server->getEventHandler()->hasEventHandler($this->namespace, $event);
+        $handlers = $this->socketEventHandlers[$event] ?? [];
+        foreach ($handlers as $handler) {
+            try {
+                if ($ackId !== null) {
+                    $ackCallback = function (mixed ...$ackData) use ($ackId): void {
+                        $ackPacket = PacketParser::buildSocketIOPacket('ACK', [
+                            'namespace' => $this->namespace,
+                            'id' => $ackId,
+                            'data' => $ackData,
+                        ]);
+                        $this->session?->send($ackPacket);
+                    };
+                    call_user_func_array($handler, array_merge($args, [$ackCallback]));
+                } else {
+                    call_user_func_array($handler, $args);
+                }
+            } catch (\Exception $e) {
+                $this->logger?->error('Socket event handler error', [
+                    'event' => $event,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    public function runMiddlewares(array $packet, callable $next): void
+    {
+        $index = 0;
+        $middlewareCount = count($this->middlewares);
+
+        $nextMiddleware = function (mixed $error = null) use (&$index, $middlewareCount, $packet, $next, &$nextMiddleware): void {
+            if ($error !== null) {
+                $this->logger?->error('Socket middleware rejected', [
+                    'sid' => $this->sid,
+                    'error' => $error instanceof \Exception ? $error->getMessage() : (string)$error,
+                ]);
+
+                $this->server?->getEventHandler()->executeEventHandler(
+                    $this->namespace,
+                    'error',
+                    ['id' => $this->sid, 'session' => $this->session, 'namespace' => $this->namespace, 'socket' => $this],
+                    [$error instanceof \Exception ? $error : new \Exception((string)$error)],
+                    null
+                );
+                return;
+            }
+
+            if ($index < $middlewareCount) {
+                $middleware = $this->middlewares[$index];
+                $index++;
+                $middleware($packet, $nextMiddleware);
+            } else {
+                $next();
+            }
+        };
+
+        try {
+            $nextMiddleware();
+        } catch (\Exception $e) {
+            $this->logger?->error('Socket middleware threw exception', [
+                'sid' => $this->sid,
+                'error' => $e->getMessage(),
+            ]);
+
+            $this->server?->getEventHandler()->executeEventHandler(
+                $this->namespace,
+                'error',
+                ['id' => $this->sid, 'session' => $this->session, 'namespace' => $this->namespace, 'socket' => $this],
+                [$e],
+                null
+            );
+        }
     }
 
     public function use(callable $middleware): self
@@ -480,24 +585,6 @@ class Socket
         return $this->middlewares;
     }
 
-    public function runMiddlewares(array $packet, callable $next): void
-    {
-        $index = 0;
-        $middlewareCount = count($this->middlewares);
-
-        $nextMiddleware = function () use (&$index, $middlewareCount, $packet, $next, &$nextMiddleware): void {
-            if ($index < $middlewareCount) {
-                $middleware = $this->middlewares[$index];
-                $index++;
-                $middleware($packet, $nextMiddleware);
-            } else {
-                $next();
-            }
-        };
-
-        $nextMiddleware();
-    }
-
     private function hasBinaryData(array $data): bool
     {
         foreach ($data as $item) {
@@ -505,7 +592,7 @@ class Socket
                 if ($this->hasBinaryData($item)) {
                     return true;
                 }
-            } elseif ($item instanceof \Closure || is_resource($item) || $this->isBinaryString($item)) {
+            } elseif (is_resource($item) || $this->isBinaryString($item)) {
                 return true;
             }
         }

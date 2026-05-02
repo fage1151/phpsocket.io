@@ -287,6 +287,8 @@ final class HttpRequestHandler
             $session->send($msg);
         }
 
+        $this->pollingHandler->wakeWaitingConnection($sid);
+
         return true;
     }
 

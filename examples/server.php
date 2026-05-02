@@ -6,111 +6,98 @@ require_once __DIR__ . '/../vendor/autoload.php';
 
 use Workerman\Worker;
 use PhpSocketIO\SocketIOServer;
+use PhpSocketIO\Socket;
 use Psr\Log\LogLevel;
 
 
 $io = new SocketIOServer('0.0.0.0:8088', [
-        'maxPayload' => 10485760,
-        'logLevel' => LogLevel::DEBUG
+    'maxPayload' => 10485760,
+    'logLevel' => LogLevel::DEBUG
 ]);
 
 // ========== Middleware 示例 ==========
+// Socket.IO v4 规范：全局/命名空间中间件签名为 (Socket $socket, callable $next)
 
 // 1. 日志记录 middleware
-$io->use(function (array $socket, array $packet, callable $next): void {
-    $sid = $socket['id'] ?? 'unknown';
-    $type = $packet['type'] ?? 'unknown';
-    $namespace = $socket['namespace'] ?? '/';
+$io->use(function (Socket $socket, callable $next): void {
+    $sid = $socket->sid;
+    $namespace = $socket->namespace;
 
-    echo "[Middleware] 收到请求: SID={$sid}, Type={$type}, Namespace={$namespace}\n";
+    echo "[Middleware] 收到连接请求: SID={$sid}, Namespace={$namespace}\n";
 
-    // 继续处理
     $next();
 });
 
 // 2. 身份验证 middleware
-$io->use(function (array $socket, array $packet, callable $next): void {
-    $sid = $socket['id'] ?? 'unknown';
+$io->use(function (Socket $socket, callable $next): void {
+    $auth = $socket->handshake['auth'];
 
-    // 如果是连接请求，可以验证 auth
-    if ($packet['type'] === 'CONNECT') {
-        $auth = $packet['auth'] ?? null;
-
-        if ($auth) {
-            echo "[Middleware] 验证 auth: " . json_encode($auth) . "\n";
-        }
+    if ($auth) {
+        echo "[Middleware] 验证 auth: " . json_encode($auth) . "\n";
     }
 
-    // 继续处理
     $next();
 });
 
-// 3. 消息过滤 middleware
-$io->use(function (array $socket, array $packet, callable $next): void {
-    $sid = $socket['id'] ?? 'unknown';
-
-    // 检查是否是事件请求
-    if (in_array($packet['type'], ['EVENT', 'BINARY_EVENT'])) {
-        $eventName = $packet['event'] ?? '';
-        echo "[Middleware] 事件: {$eventName} (SID: {$sid})\n";
-
-        // 这里可以添加事件过滤逻辑
-    }
-
-    // 继续处理
-    $next();
-});
+// 3. 拒绝连接示例（取消注释可测试）
+// Socket.IO v4 规范：中间件可通过 next(new \Exception('msg')) 拒绝连接
+// 支持 error.data 属性传递额外信息给客户端
+// $io->use(function (Socket $socket, callable $next): void {
+//     $auth = $socket->handshake['auth'];
+//     if (!$auth || !isset($auth['token'])) {
+//         $err = new \Exception('Authentication required');
+//         $err->data = ['content' => 'Please provide a valid token']; // 客户端会收到 error.data
+//         $next($err);
+//         return;
+//     }
+//     $next();
+// });
 
 
 $io->of('/chat')->on('connection', function (mixed $socket) use ($io): void {
-    // ========== 获取客户端 IP 示例 ==========
     $clientIp = $socket->handshake['address'];
     echo "新连接: ID={$socket->sid}, IP={$clientIp}\n";
 
     // ========== Socket 实例级别的中间件 ==========
+    // Socket.IO v4 规范：Socket 级别中间件签名为 (array $packet, callable $next)
+    // $packet 格式为 [eventName, ...data]，与 JS 版 [event, ...args] 一致
 
     // 1. Socket 级别日志记录
     $socket->use(function (array $packet, callable $next) use ($socket): void {
-        $eventName = $packet['event'] ?? 'unknown';
+        $eventName = $packet[0] ?? 'unknown';
         $clientIp = $socket->handshake['address'];
         echo "[Socket Middleware] Socket {$socket->sid} (IP: {$clientIp}) 收到事件: {$eventName}\n";
         $next();
     });
 
     // 2. Socket 级别事件过滤
-    $socket->use(function (array $packet, callable $next) use ($socket): void {
-        $eventName = $packet['event'] ?? '';
+    $socket->use(function (array $packet, callable $next): void {
+        $eventName = $packet[0] ?? '';
 
-        // 只允许特定的事件通过
         $allowedEvents = ['chat message', 'message', 'ping', 'customEvent'];
 
         if (in_array($eventName, $allowedEvents)) {
             $next();
         } else {
             echo "[Socket Middleware] 阻止未授权的事件: {$eventName}\n";
-            // 不调用 next()，阻止继续处理
-            $next();
         }
+        $next();
     });
 
     // 3. Socket 级别数据验证
     $socket->use(function (array $packet, callable $next) use ($socket): void {
-        $eventName = $packet['event'] ?? '';
-        $data = $packet['data'] ?? [];
+        $eventName = $packet[0] ?? '';
+        $data = array_slice($packet, 1);
 
-        // 对特定事件进行数据验证
         if ($eventName === 'chat message') {
             $message = $data[0] ?? '';
             if (is_string($message) && strlen($message) > 0 && strlen($message) <= 1000) {
-                // 验证通过
                 $next();
             } else {
                 echo "[Socket Middleware] 消息验证失败: 消息长度必须在1-1000之间\n";
-                // 发送错误反馈
                 $socket->emit('error', '消息格式无效');
             }
         } else {
-            // 其他事件直接通过
             $next();
         }
     });
@@ -118,7 +105,7 @@ $io->of('/chat')->on('connection', function (mixed $socket) use ($io): void {
     $socket->emit('welcome', 'Welcome to Socket.IO server!');
 
     $socket->on('chat message', function (mixed $msg) use ($socket): void {
-        $socket->broadcasterer->emit('chat message', $msg);
+        $socket->broadcast->emit('chat message', $msg);
     });
 
     $socket->on('message', function (mixed $msg) use ($socket): void {
@@ -130,7 +117,6 @@ $io->of('/chat')->on('connection', function (mixed $socket) use ($io): void {
     });
 
     $socket->on('ack', function (mixed $msg, mixed $callback = null) use ($socket) {
-        var_dump("ack");
         if (is_callable($callback)) {
             $callback(['status' => 'ok', 'data' => $msg]);
         }
@@ -164,7 +150,6 @@ $io->of('/chat')->on('connection', function (mixed $socket) use ($io): void {
     });
 
     $socket->on('ping', function () use ($socket): void {
-        var_dump('ping');
         $socket->emit('pong');
     });
 
@@ -188,7 +173,6 @@ $io->of('/chat')->on('connection', function (mixed $socket) use ($io): void {
     });
 
     $socket->on('reqBinary', function (mixed $data, mixed $callback = null) use ($socket): void {
-        $binaryData = "Hello binary world!";
         $socket->emit('binaryResponse', '123');
         if (is_callable($callback)) {
             $callback(['status' => 'ok']);
@@ -211,7 +195,8 @@ $io->of('/chat')->on('connection', function (mixed $socket) use ($io): void {
         $socket->emit('ack3', 'Response for ack3');
     });
 
-    $socket->on('disconnect', function () use ($socket): void {
+    $socket->on('disconnect', function (string $reason) use ($socket): void {
+        echo "Socket {$socket->sid} disconnected: {$reason}\n";
     });
 });
 
@@ -224,7 +209,8 @@ $io->of('/test')->on('connection', function (mixed $socket) use ($io): void {
         $socket->emit('message', 'Test namespace: ' . $msg);
     });
 
-    $socket->on('disconnect', function () use ($socket): void {
+    $socket->on('disconnect', function (string $reason) use ($socket): void {
+        echo "Socket {$socket->sid} disconnected from /test: {$reason}\n";
     });
 });
 

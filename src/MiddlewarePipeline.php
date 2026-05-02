@@ -7,18 +7,18 @@ namespace PhpSocketIO;
 /**
  * 中间件管道类 - 统一的中间件链构建和执行
  *
+ * Socket.IO v4 中间件签名规范：
+ * - 全局/命名空间级别中间件：function (Socket $socket, callable $next) { ... }
+ *   仅在客户端连接到命名空间时执行，可用于身份验证等
+ * - Socket 实例级别中间件：function (array $packet, callable $next) { ... }
+ *   对每个接收的事件包执行，可用于事件过滤等
+ *
  * @package PhpSocketIO
  */
 final class MiddlewarePipeline
 {
     /**
      * 构建中间件管道并执行
-     *
-     * 中间件的签名：
-     * - 全局/命名空间级别中间件：function ($socket, $packet, $next) { ... }
-     * - Socket 实例级别中间件：function ($packet, $next) { ... }
-     *
-     * $next 会被正确地作为最后一个参数传递给每个中间件
      *
      * @param array<callable> $middlewares 中间件数组
      * @param callable $finalHandler 最终处理回调

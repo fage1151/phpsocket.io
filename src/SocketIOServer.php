@@ -266,16 +266,24 @@ class SocketIOServer
             $this->roomManager->removeSession($session->sid);
 
             foreach ($session->namespaces as $namespace => $auth) {
-                $socket = [
-                    'id' => $session->sid,
-                    'session' => $session,
-                    'namespace' => $namespace
-                ];
-                $this->eventHandler->triggerDisconnect($socket, 'client disconnect');
+                $sessionKey = "{$session->sid}:{$namespace}";
+                $socket = $this->sessionSocketMap[$sessionKey] ?? new Socket($session->sid, $namespace, $this);
+                $this->eventHandler->triggerDisconnect(
+                    [
+                        'id' => $sessionKey,
+                        'session' => $session,
+                        'namespace' => $namespace,
+                        'socket' => $socket,
+                    ],
+                    'transport close'
+                );
+                unset($this->sessionSocketMap[$sessionKey]);
             }
 
             Session::remove($session->sid);
         }
+
+        ConnectionManager::cleanup($connection);
     }
 
     public function onError(TcpConnection $connection, $code, $msg): void
@@ -402,15 +410,9 @@ class SocketIOServer
 
     private function processPacketByType(string $type, mixed $connection, Session $session, string $namespace, mixed $data, array $packet): void
     {
-        // 构建 socket 信息数组，用于中间件
-        $socket = [
-            'id' => $session->sid,
-            'namespace' => $namespace,
-            'session' => $session,
-            'connection' => $connection,
-        ];
+        $sessionKey = "{$session->sid}:{$namespace}";
+        $socket = $this->sessionSocketMap[$sessionKey] ??= new Socket($session->sid, $namespace, $this);
 
-        // 构建完整的 packet 信息
         $fullPacket = [
             ...$packet,
             'namespace' => $namespace,
@@ -418,10 +420,7 @@ class SocketIOServer
             'type' => $type,
         ];
 
-        // 通过 EventHandler 处理，让中间件能够执行
-        // 然后回调原来的处理逻辑
-        $this->eventHandler->handlePacket($fullPacket, $socket, function (array $socket, array $packet) use ($type, $connection, $session, $namespace, $data) {
-            // 直接使用 match 处理，不重复触发
+        $this->eventHandler->handlePacket($fullPacket, $socket, function (Socket $socket, array $packet) use ($type, $connection, $session, $namespace, $data): void {
             match ($type) {
                 'CONNECT' => $this->handleConnectPacket($connection, $session, $namespace, $data),
                 'DISCONNECT' => $this->handleDisconnectPacket($connection, $session, $namespace),
@@ -581,8 +580,6 @@ class SocketIOServer
             'namespace' => $namespace
         ]);
 
-        $session->namespaces[$namespace] = true;
-
         if ($authData !== null) {
             $session->updateHandshake(['auth' => $authData]);
         }
@@ -590,37 +587,39 @@ class SocketIOServer
         $sessionKey = "{$session->sid}:{$namespace}";
         $socket = $this->sessionSocketMap[$sessionKey] ??= new Socket($session->sid, $namespace, $this);
         $socket->auth = $authData;
+        $socket->connection = $connection;
+        $socket->session = $session;
+        $socket->handshake = $session->handshake;
 
-        $this->eventHandler->triggerConnect(
-            [
-                'id' => $sessionKey,
-                'session' => $session,
-                'connection' => $connection,
+        $this->eventHandler->runMiddlewares($socket, function () use ($session, $namespace, $connection, $socket, $sessionKey): void {
+            $session->namespaces[$namespace] = true;
+
+            $this->eventHandler->triggerConnect(
+                [
+                    'id' => $sessionKey,
+                    'session' => $session,
+                    'connection' => $connection,
+                    'namespace' => $namespace,
+                    'socket' => $socket
+                ],
+                $namespace,
+                $this
+            );
+
+            $socketIoPacket = PacketParser::buildSocketIOPacket('CONNECT', [
                 'namespace' => $namespace,
-                'socket' => $socket
-            ],
-            $namespace,
-            $this
-        );
+                'data' => [
+                    'sid' => $session->sid
+                ]
+            ]);
 
-        $socketIoPacket = PacketParser::buildSocketIOPacket('CONNECT', [
-            'namespace' => $namespace,
-            'data' => [
-                'sid' => $session->sid
-            ]
-        ]);
+            $this->logger->debug('发送连接确认包', [
+                'sid' => $session->sid,
+                'packet' => $socketIoPacket
+            ]);
 
-        $this->logger->debug('发送连接确认包', [
-            'sid' => $session->sid,
-            'packet' => $socketIoPacket
-        ]);
-
-        $result = $session->send($socketIoPacket);
-
-        $this->logger->debug('连接确认包发送结果', [
-            'sid' => $session->sid,
-            'result' => $result
-        ]);
+            $session->send($socketIoPacket);
+        });
     }
 
     private function handleDisconnectPacket(mixed $connection, Session $session, string $namespace): void
@@ -632,12 +631,18 @@ class SocketIOServer
 
         unset($session->namespaces[$namespace]);
 
-        $socket = [
-            'id' => $session->sid,
-            'session' => $session,
-            'namespace' => $namespace
-        ];
-        $this->eventHandler->triggerDisconnect($socket, 'client namespace disconnect');
+        $sessionKey = "{$session->sid}:{$namespace}";
+        $socket = $this->sessionSocketMap[$sessionKey] ?? new Socket($session->sid, $namespace, $this);
+
+        $this->eventHandler->triggerDisconnect(
+            [
+                'id' => $sessionKey,
+                'session' => $session,
+                'namespace' => $namespace,
+                'socket' => $socket,
+            ],
+            'client namespace disconnect'
+        );
     }
 
     private function handleEventPacket(mixed $connection, Session $session, string $namespace, string $eventName, array $eventArgs = [], ?int $ackId = null): void
@@ -676,25 +681,25 @@ class SocketIOServer
         return $this->sessionSocketMap[$sessionKey] ??= new Socket($session->sid, $namespace, $this);
     }
 
+    public function cleanupSocketMap(string $sessionKey): void
+    {
+        unset($this->sessionSocketMap[$sessionKey]);
+    }
+
     private function updateSessionConnection(Session $session, mixed $connection): void
     {
         $session->connection = $connection;
-        $session->transport = 'websocket';
-        $session->isWs = true;
+
+        if ($session->isWs || ($connection && is_object($connection) && ConnectionManager::isWs($connection))) {
+            $session->transport = 'websocket';
+            $session->isWs = true;
+        }
     }
 
     private function processEvent(Session $session, string $namespace, string $eventName, array $eventArgs, Socket $socket, ?int $ackId): void
     {
-        // 构建事件数据包信息，用于 Socket 中间件
-        $packet = [
-            'type' => 'EVENT',
-            'namespace' => $namespace,
-            'event' => $eventName,
-            'data' => $eventArgs,
-            'id' => $ackId
-        ];
+        $packet = array_merge([$eventName], $eventArgs);
 
-        // 执行 Socket 实例的中间件链，然后处理事件
         $socket->runMiddlewares($packet, function () use ($session, $namespace, $eventName, $eventArgs, $socket, $ackId) {
             $this->processEventHandlers($session, $namespace, $eventName, $eventArgs, $socket, $ackId);
         });
@@ -742,6 +747,14 @@ class SocketIOServer
                 'sid' => $session->sid
             ]);
 
+            $socketHandlers = $socket->getSocketEventHandlers();
+            $handledBySocket = false;
+
+            if (!empty($socketHandlers[$eventName])) {
+                $socket->handleEvent($eventName, $eventArgs, $ackId);
+                $handledBySocket = true;
+            }
+
             $socketInfo = [
                 'id' => $session->sid,
                 'session' => $session,
@@ -749,7 +762,6 @@ class SocketIOServer
                 'socket' => $socket
             ];
 
-            // 使用共享的执行方法
             $foundHandler = $this->eventHandler->executeEventHandler(
                 $namespace,
                 $eventName,
@@ -758,7 +770,7 @@ class SocketIOServer
                 $ackId
             );
 
-            return $foundHandler;
+            return $foundHandler || $handledBySocket;
         } catch (\Exception $e) {
             $this->logger->error('Error in event handler', [
                 'exception' => $e->getMessage(),
@@ -791,11 +803,10 @@ class SocketIOServer
         return $this->roomManager;
     }
 
-    public function emit(string $event, mixed ...$args): self
+    public function emit(string $event, mixed ...$args): bool
     {
         $broadcaster = new Broadcaster($this);
-        $broadcaster->emit($event, ...$args);
-        return $this;
+        return $broadcaster->emit($event, ...$args);
     }
 
     public function use(callable $middleware): self
@@ -996,5 +1007,40 @@ class SocketIOServer
     {
         $broadcaster = new Broadcaster($this);
         return $broadcaster->timeout($timeout);
+    }
+
+    public function disconnectSockets(bool $close = false): void
+    {
+        $sockets = $this->fetchSockets();
+        foreach ($sockets as $socket) {
+            $socket->disconnect($close);
+        }
+    }
+
+    public function emitWithAck(string $event, mixed ...$args): array
+    {
+        $broadcaster = new Broadcaster($this);
+        return $broadcaster->emitWithAck($event, ...$args);
+    }
+
+    public function close(?callable $callback = null): void
+    {
+        $this->logger?->info('Closing Socket.IO server');
+
+        $this->disconnectSockets(true);
+
+        foreach (Session::all() as $session) {
+            $session->close();
+        }
+
+        $this->sessionSocketMap = [];
+
+        if ($this->serverManager) {
+            $this->serverManager->shutdown();
+        }
+
+        if ($callback) {
+            $callback();
+        }
     }
 }

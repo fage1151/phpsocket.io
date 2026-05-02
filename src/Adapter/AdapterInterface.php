@@ -83,6 +83,14 @@ interface AdapterInterface
     public function close(): void;
 
     /**
+     * 向集群中其他 Socket.IO 服务器发送消息
+     * @param string $eventName 事件名称
+     * @param array $args 事件参数
+     * @param callable|null $ack 确认回调
+     */
+    public function serverSideEmit(string $eventName, array $args = [], ?callable $ack = null): void;
+
+    /**
      * 设置日志记录器
      * @param LoggerInterface $logger 日志记录器
      */

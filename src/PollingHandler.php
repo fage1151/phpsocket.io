@@ -200,6 +200,11 @@ final class PollingHandler
 
         $messages = $session->flush();
         if (empty($messages)) {
+            if ($session->isWs) {
+                $this->sendHttpResponse($connection, 200, [], '6');
+                return;
+            }
+
             $timeout = $this->calculatePollingTimeout($session);
 
             $this->waitingConnections[$sid] = [
@@ -237,12 +242,7 @@ final class PollingHandler
                 'timeout' => $timeout
             ]);
         } else {
-            $batchSize = 10;
-            $batches = array_chunk($messages, $batchSize);
-
-            foreach ($batches as $batch) {
-                $this->sendHttpResponse($connection, 200, [], implode("\x1e", $batch));
-            }
+            $this->sendHttpResponse($connection, 200, [], implode("\x1e", $messages));
         }
     }
 
@@ -368,7 +368,9 @@ final class PollingHandler
 
     private function calculatePollingTimeout(Session $session): int
     {
-        return 10;
+        $pingInterval = $this->serverManager->getPingInterval();
+        $pingTimeout = $this->serverManager->getPingTimeout();
+        return (int)(($pingInterval + $pingTimeout) / 1000);
     }
 
     private function cancelConnectionTimer(\Workerman\Connection\TcpConnection $connection): void
