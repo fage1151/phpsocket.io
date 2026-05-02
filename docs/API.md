@@ -28,7 +28,7 @@ $io->on('connection', function (Socket $socket) {
     });
 });
 
-$io->start();
+Worker::runAll();
 ```
 
 ---
@@ -452,16 +452,32 @@ $adapter = new RedisAdapter([
 $io->setAdapter($adapter);
 ```
 
-### Cluster 适配器（多 Redis 实例）
+### Cluster 适配器（基于 Workerman Channel）
 
 ```php
 use PhpSocketIO\Adapter\ClusterAdapter;
 
 $adapter = new ClusterAdapter([
-    ['host' => 'redis1', 'port' => 6379],
-    ['host' => 'redis2', 'port' => 6379],
+    'channel_ip' => '127.0.0.1',
+    'channel_port' => 2206,
+    'prefix' => 'socketio_',
+    'heartbeat' => 25
 ]);
 $io->setAdapter($adapter);
+```
+
+首先需要启动 Workerman Channel 服务：
+```php
+// channel_server.php
+use Workerman\Worker;
+
+require_once __DIR__ . '/vendor/autoload.php';
+
+$channel_server = new Worker('Channel://0.0.0.0:2206');
+$channel_server->name = 'Socket.IO Cluster Channel';
+$channel_server->count = 1;
+
+Worker::runAll();
 ```
 
 ---
