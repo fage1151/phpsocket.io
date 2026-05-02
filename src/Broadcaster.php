@@ -7,138 +7,169 @@ namespace PhpSocketIO;
 use Psr\Log\LoggerInterface;
 
 /**
- * Socket.IO 广播器类
+ * Socket.IO 广播器类 (不可变链式调用版本)
  *
  * 提供事件广播功能，支持房间、命名空间等
+ * 符合 Socket.IO v4 规范：每次链式调用返回新实例
  *
  * @package PhpSocketIO
  */
 final class Broadcaster
 {
-    /**
-     * Socket.IO服务器实例
-     *
-     * @var SocketIOServer|null
-     */
     private ?SocketIOServer $server;
-
-    /**
-     * 命名空间
-     *
-     * @var string
-     */
     private string $namespace;
-
-    /**
-     * 目标房间
-     *
-     * @var string|array|null
-     */
-    private string|array|null $targetRoom = null;
-
-    /**
-     * 要排除的Socket
-     *
-     * @var Socket|null
-     */
-    private ?Socket $excludeSocket = null;
-
-    /**
-     * 要排除的房间
-     *
-     * @var array
-     */
+    private ?Socket $excludeSocket;
+    private array $targetRooms = [];
     private array $exceptRooms = [];
-
-    /**
-     * 日志记录器
-     *
-     * @var LoggerInterface|null
-     */
+    private bool $volatile = false;
+    private bool $compress = false;
+    private ?int $timeout = null;
+    private bool $local = false;
     private ?LoggerInterface $logger = null;
 
-    /**
-     * Socket实例缓存
-     *
-     * @var array
-     */
-    private array $socketCache = [];
-
-    /**
-     * 构造函数
-     *
-     * @param SocketIOServer|null $server 服务器实例
-     * @param string $namespace 命名空间
-     * @param Socket|null $excludeSocket 要排除的Socket
-     */
     public function __construct(
         ?SocketIOServer $server = null,
         string $namespace = '/',
-        ?Socket $excludeSocket = null
+        ?Socket $excludeSocket = null,
+        array $targetRooms = [],
+        array $exceptRooms = [],
+        bool $volatile = false,
+        bool $compress = false,
+        ?int $timeout = null,
+        bool $local = false
     ) {
         $this->server = $server;
         $this->namespace = $namespace;
         $this->excludeSocket = $excludeSocket;
+        $this->targetRooms = $targetRooms;
+        $this->exceptRooms = $exceptRooms;
+        $this->volatile = $volatile;
+        $this->compress = $compress;
+        $this->timeout = $timeout;
+        $this->local = $local;
 
-        // 初始化日志记录器
         if ($this->server && method_exists($this->server, 'getLogger')) {
             $this->logger = $this->server->getLogger();
         }
     }
 
-    /**
-     * 设置目标房间
-     *
-     * @param string|array $room 房间名或房间数组
-     * @return self
-     */
     public function to(string|array $room): self
     {
-        $this->targetRoom = $room;
-        return $this;
+        $rooms = is_array($room) ? $room : [$room];
+        $newTargetRooms = array_merge($this->targetRooms, $rooms);
+        $newTargetRooms = array_unique($newTargetRooms);
+
+        return new self(
+            $this->server,
+            $this->namespace,
+            $this->excludeSocket,
+            $newTargetRooms,
+            $this->exceptRooms,
+            $this->volatile,
+            $this->compress,
+            $this->timeout,
+            $this->local
+        );
     }
 
-    /**
-     * 设置排除房间
-     *
-     * @param string|array $room 房间名或房间数组
-     * @return self
-     */
+    public function in(string|array $room): self
+    {
+        return $this->to($room);
+    }
+
     public function except(string|array $room): self
     {
-        if (is_array($room)) {
-            $this->exceptRooms = array_merge($this->exceptRooms, $room);
-        } else {
-            $this->exceptRooms[] = $room;
-        }
-        return $this;
+        $rooms = is_array($room) ? $room : [$room];
+        $newExceptRooms = array_merge($this->exceptRooms, $rooms);
+        $newExceptRooms = array_unique($newExceptRooms);
+
+        return new self(
+            $this->server,
+            $this->namespace,
+            $this->excludeSocket,
+            $this->targetRooms,
+            $newExceptRooms,
+            $this->volatile,
+            $this->compress,
+            $this->timeout,
+            $this->local
+        );
     }
 
-    /**
-     * 启用广播
-     *
-     * @return self
-     */
     public function broadcast(): self
     {
         return $this;
     }
 
-    /**
-     * 发送事件
-     *
-     * @param string $event 事件名
-     * @param mixed ...$args 事件参数
-     * @return SocketIOServer|null
-     */
+    public function local(): self
+    {
+        return new self(
+            $this->server,
+            $this->namespace,
+            $this->excludeSocket,
+            $this->targetRooms,
+            $this->exceptRooms,
+            $this->volatile,
+            $this->compress,
+            $this->timeout,
+            true
+        );
+    }
+
+    public function volatile(): self
+    {
+        return new self(
+            $this->server,
+            $this->namespace,
+            $this->excludeSocket,
+            $this->targetRooms,
+            $this->exceptRooms,
+            true,
+            $this->compress,
+            $this->timeout,
+            $this->local
+        );
+    }
+
+    public function compress(bool $compress = true): self
+    {
+        return new self(
+            $this->server,
+            $this->namespace,
+            $this->excludeSocket,
+            $this->targetRooms,
+            $this->exceptRooms,
+            $this->volatile,
+            $compress,
+            $this->timeout,
+            $this->local
+        );
+    }
+
+    public function timeout(int $timeout): self
+    {
+        return new self(
+            $this->server,
+            $this->namespace,
+            $this->excludeSocket,
+            $this->targetRooms,
+            $this->exceptRooms,
+            $this->volatile,
+            $this->compress,
+            $timeout,
+            $this->local
+        );
+    }
+
     public function emit(string $event, mixed ...$args): ?SocketIOServer
     {
         if (!$this->server) {
             $this->logger?->warning('Broadcaster未关联服务器，无法发送事件', ['event' => $event]);
             return null;
         }
+
         try {
-            if ($this->targetRoom) {
+            if (!empty($this->targetRooms)) {
                 $this->emitToRooms($event, $args);
             } else {
                 $this->emitToAll($event, $args);
@@ -148,7 +179,7 @@ final class Broadcaster
             $this->logger?->error('Broadcaster发送事件失败', [
                 'event' => $event,
                 'namespace' => $this->namespace,
-                'targetRoom' => $this->targetRoom,
+                'targetRooms' => $this->targetRooms,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
@@ -156,9 +187,6 @@ final class Broadcaster
         }
     }
 
-    /**
-     * 构建Socket.IO数据包（优化版，复用构建结果）
-     */
     private function buildEventPacket(string $event, array $args): array
     {
         $packetStr = PacketParser::buildSocketIOPacket('EVENT', [
@@ -169,55 +197,38 @@ final class Broadcaster
         return PacketParser::parseSocketIOPacket($packetStr);
     }
 
-    /**
-     * 向指定房间发送事件
-     *
-     * @param string $event 事件名
-     * @param array $args 事件参数
-     * @return void
-     */
     private function emitToRooms(string $event, array $args): void
     {
         $adapter = $this->server->getAdapter();
-        $rooms = is_array($this->targetRoom) ? $this->targetRoom : [$this->targetRoom];
 
         if ($adapter) {
-            // 使用适配器：只构建一次数据包
             $packetArray = $this->buildEventPacket($event, $args);
-            foreach ($rooms as $room) {
+            foreach ($this->targetRooms as $room) {
                 $adapter->to($room, $packetArray);
             }
             return;
         }
 
-        // 不使用适配器：逐个发送
         $roomManager = $this->server->getRoomManager();
-        foreach ($rooms as $room) {
+        foreach ($this->targetRooms as $room) {
             $members = $roomManager->getRoomMembers($room);
             foreach ($members as $sid) {
-                $this->emitToSocket($sid, $event, $args);
+                if (!$this->shouldExclude($sid)) {
+                    $this->emitToSocket($sid, $event, $args);
+                }
             }
         }
     }
 
-    /**
-     * 向所有客户端发送事件
-     *
-     * @param string $event 事件名
-     * @param array $args 事件参数
-     * @return void
-     */
     private function emitToAll(string $event, array $args): void
     {
         $adapter = $this->server->getAdapter();
         if ($adapter) {
-            // 使用适配器：只构建一次数据包
             $packetArray = $this->buildEventPacket($event, $args);
             $adapter->broadcast($packetArray);
             return;
         }
 
-        // 不使用适配器：逐个发送
         $sockets = $this->server->fetchSockets($this->namespace);
         foreach ($sockets as $socket) {
             if ($this->shouldExclude($socket->sid)) {
@@ -230,51 +241,21 @@ final class Broadcaster
         }
     }
 
-    /**
-     * 向指定Socket发送事件
-     *
-     * @param string $sid SocketID
-     * @param string $event 事件名
-     * @param array $args 事件参数
-     * @return void
-     */
     private function emitToSocket(string $sid, string $event, array $args): void
     {
-        if ($this->shouldExclude($sid)) {
-            return;
-        }
         $session = Session::get($sid);
         if (!$session) {
             return;
         }
-        if (!isset($this->socketCache[$sid])) {
-            $socket = new Socket($sid, $this->namespace, $this->server);
-            $socket->session = $session;
-            $this->socketCache[$sid] = $socket;
-        } else {
-            $socket = $this->socketCache[$sid];
-            $socket->session = $session;
-        }
+        $socket = $this->server->getOrCreateSocket($session, $this->namespace);
         $socket->emit($event, ...$args);
     }
 
-    /**
-     * 检查是否应该排除指定Socket
-     *
-     * @param string $sid SocketID
-     * @return bool
-     */
     private function shouldExclude(string $sid): bool
     {
         return $this->excludeSocket && $this->excludeSocket->sid === $sid;
     }
 
-    /**
-     * 检查Socket是否在排除房间中
-     *
-     * @param Socket $socket Socket实例
-     * @return bool
-     */
     private function isInExceptRoom(Socket $socket): bool
     {
         foreach ($this->exceptRooms as $room) {

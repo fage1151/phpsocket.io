@@ -427,7 +427,9 @@ final class PacketParser
             }
         }
         $typeCode = $enumType !== null ? $enumType->value : SocketPacketType::EVENT->value;
-        $packet = (string)$typeCode;
+        
+        // Engine.IO MESSAGE 类型前缀 (4)
+        $packet = '4' . (string)$typeCode;
         $namespace = $params['namespace'] ?? '/';
 
         if (($enumType === SocketPacketType::BINARY_EVENT || $enumType === SocketPacketType::BINARY_ACK) && isset($params['binaryCount'])) {

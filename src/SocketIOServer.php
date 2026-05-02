@@ -610,14 +610,12 @@ class SocketIOServer
             ]
         ]);
 
-        $engineIoPacket = '4' . $socketIoPacket;
-
         $this->logger->debug('发送连接确认包', [
             'sid' => $session->sid,
-            'packet' => $engineIoPacket
+            'packet' => $socketIoPacket
         ]);
 
-        $result = $session->send($engineIoPacket);
+        $result = $session->send($socketIoPacket);
 
         $this->logger->debug('连接确认包发送结果', [
             'sid' => $session->sid,
@@ -883,9 +881,14 @@ class SocketIOServer
 
     public function of(string $namespace = '/'): SocketNamespace
     {
-        if (!isset($this->namespaces[$namespace])) {
+        $isNewNamespace = !isset($this->namespaces[$namespace]);
+
+        if ($isNewNamespace) {
             $this->namespaces[$namespace] = new SocketNamespace($namespace, $this);
+
+            $this->eventHandler->trigger('new_namespace', $this->namespaces[$namespace]);
         }
+
         return $this->namespaces[$namespace];
     }
 
@@ -954,5 +957,44 @@ class SocketIOServer
     public function getSockets(string $namespace = '/'): SocketNamespace
     {
         return $this->of($namespace);
+    }
+
+    public function __get(string $name): mixed
+    {
+        return match ($name) {
+            'sockets' => $this->of('/'),
+            'engine' => $this->engineIoHandler,
+            default => null,
+        };
+    }
+
+    public function local(): Broadcaster
+    {
+        $broadcaster = new Broadcaster($this);
+        return $broadcaster->local();
+    }
+
+    public function in(string|array $room): Broadcaster
+    {
+        $broadcaster = new Broadcaster($this);
+        return $broadcaster->in($room);
+    }
+
+    public function volatile(): Broadcaster
+    {
+        $broadcaster = new Broadcaster($this);
+        return $broadcaster->volatile();
+    }
+
+    public function compress(bool $compress = true): Broadcaster
+    {
+        $broadcaster = new Broadcaster($this);
+        return $broadcaster->compress($compress);
+    }
+
+    public function timeout(int $timeout): Broadcaster
+    {
+        $broadcaster = new Broadcaster($this);
+        return $broadcaster->timeout($timeout);
     }
 }

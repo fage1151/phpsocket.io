@@ -64,7 +64,7 @@ $io->use(function (array $socket, array $packet, callable $next): void {
 
 $io->of('/chat')->on('connection', function (mixed $socket) use ($io): void {
     // ========== 获取客户端 IP 示例 ==========
-    $clientIp = $socket->getRemoteIp();
+    $clientIp = $socket->handshake['address'];
     echo "新连接: ID={$socket->sid}, IP={$clientIp}\n";
 
     // ========== Socket 实例级别的中间件 ==========
@@ -72,7 +72,7 @@ $io->of('/chat')->on('connection', function (mixed $socket) use ($io): void {
     // 1. Socket 级别日志记录
     $socket->use(function (array $packet, callable $next) use ($socket): void {
         $eventName = $packet['event'] ?? 'unknown';
-        $clientIp = $socket->getRemoteIp() ?? 'unknown';
+        $clientIp = $socket->handshake['address'];
         echo "[Socket Middleware] Socket {$socket->sid} (IP: {$clientIp}) 收到事件: {$eventName}\n";
         $next();
     });
@@ -175,7 +175,7 @@ $io->of('/chat')->on('connection', function (mixed $socket) use ($io): void {
     });
 
     $socket->on('twoWay', function (mixed $data, mixed $callback = null) use ($socket): void {
-        $socket->emit('twoWay', 'Server response', function (mixed $clientResponse) use ($socket, $callback): void {
+        $socket->emitWithAck('twoWay', 'Server response', function (mixed $clientResponse) use ($socket, $callback): void {
             $socket->emit('twoWayBack', 'Final response: ' . $clientResponse);
             if (is_callable($callback)) {
                 $callback(['status' => 'ok', 'twoWay' => 'success']);

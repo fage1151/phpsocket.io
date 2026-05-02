@@ -413,7 +413,12 @@ class EventHandler
             isset($this->namespaceHandlers[$namespace]['disconnect']) &&
             is_callable($this->namespaceHandlers[$namespace]['disconnect'])
         ) {
-            call_user_func($this->namespaceHandlers[$namespace]['disconnect'], $socket, $reason);
+            $socketInstance = $socket['socket'] ?? null;
+            if ($socketInstance && $socketInstance instanceof Socket) {
+                call_user_func($this->namespaceHandlers[$namespace]['disconnect'], $socketInstance, $reason);
+            } else {
+                call_user_func($this->namespaceHandlers[$namespace]['disconnect'], $socket, $reason);
+            }
         }
     }
 
@@ -424,7 +429,12 @@ class EventHandler
 
         if (isset($this->namespaceHandlers[$namespace]['events'][$eventName])
             && is_callable($this->namespaceHandlers[$namespace]['events'][$eventName])) {
-            call_user_func($this->namespaceHandlers[$namespace]['events'][$eventName], $socket, $reason);
+            $socketInstance = $socket['socket'] ?? null;
+            if ($socketInstance && $socketInstance instanceof Socket) {
+                call_user_func($this->namespaceHandlers[$namespace]['events'][$eventName], $socketInstance, $reason);
+            } else {
+                call_user_func($this->namespaceHandlers[$namespace]['events'][$eventName], $socket, $reason);
+            }
         }
     }
 
@@ -931,5 +941,16 @@ class EventHandler
     {
         $namespace = $this->normalizeNamespace($namespace);
         return $this->namespaceHandlers[$namespace]['events'] ?? [];
+    }
+
+    /**
+     * 触发自定义事件（用于服务器级别事件，如 'new_namespace'）
+     */
+    public function trigger(string $event, mixed ...$args): void
+    {
+        $handler = $this->getEventHandler('/', $event);
+        if ($handler !== null) {
+            call_user_func_array($handler, $args);
+        }
     }
 }

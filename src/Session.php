@@ -310,13 +310,22 @@ final class Session
     public function setRemoteIp(string $ip): void
     {
         $this->remoteIp = $ip;
+        
+        if (is_array($this->handshake)) {
+            $this->handshake['address'] = $ip;
+        }
     }
 
     /**
      * 获取客户端 IP 地址
+     * 优先从 handshake['address'] 获取，如果没有则返回 remoteIp 属性
      */
     public function getRemoteIp(): ?string
     {
+        if (is_array($this->handshake) && isset($this->handshake['address'])) {
+            return $this->handshake['address'];
+        }
+        
         return $this->remoteIp;
     }
 

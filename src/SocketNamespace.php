@@ -7,15 +7,13 @@ namespace PhpSocketIO;
 use Psr\Log\LoggerInterface;
 
 /**
- * Socket.IO 命名空间类
- *
- * 提供标准的 Socket.IO 命名空间接口
+ * Socket.IO 命名空间类 (完整 Socket.IO v4 规范)
  *
  * @package PhpSocketIO
  */
 final class SocketNamespace
 {
-    private string $name;
+    public readonly string $name;
     private SocketIOServer $server;
 
     public function __construct(string $name, SocketIOServer $server)
@@ -27,6 +25,16 @@ final class SocketNamespace
     public function getName(): string
     {
         return $this->name;
+    }
+
+    public function getAdapter(): ?Adapter\AdapterInterface
+    {
+        return $this->server->getAdapter();
+    }
+
+    public function getServer(): SocketIOServer
+    {
+        return $this->server;
     }
 
     public function on(string $event, callable $handler): self
@@ -76,6 +84,24 @@ final class SocketNamespace
         return $broadcaster->except($rooms);
     }
 
+    public function volatile(): Broadcaster
+    {
+        $broadcaster = new Broadcaster($this->server, $this->name);
+        return $broadcaster->volatile();
+    }
+
+    public function compress(bool $compress = true): Broadcaster
+    {
+        $broadcaster = new Broadcaster($this->server, $this->name);
+        return $broadcaster->compress($compress);
+    }
+
+    public function timeout(int $timeout): Broadcaster
+    {
+        $broadcaster = new Broadcaster($this->server, $this->name);
+        return $broadcaster->timeout($timeout);
+    }
+
     public function fetchSockets(): array
     {
         return $this->server->fetchSockets($this->name);
@@ -98,13 +124,12 @@ final class SocketNamespace
         return $this;
     }
 
-    public function getAdapter(): ?Adapter\AdapterInterface
+    public function __get(string $name): mixed
     {
-        return $this->server->getAdapter();
-    }
-
-    public function getServer(): SocketIOServer
-    {
-        return $this->server;
+        return match ($name) {
+            'adapter' => $this->getAdapter(),
+            'sockets' => $this,
+            default => null,
+        };
     }
 }

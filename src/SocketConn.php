@@ -20,7 +20,7 @@ class SocketConn
         $this->session = $session;
         $this->id = $session->sid;
         $this->transport = $session->transport;
-        $this->remoteAddress = $session->remoteIp ?? '';
+        $this->remoteAddress = is_array($session->handshake) ? ($session->handshake['address'] ?? '') : '';
         $this->headers = is_array($session->handshake) ? ($session->handshake['headers'] ?? []) : [];
         $this->createdAt = $session->createdAt;
         $this->secure = is_array($session->handshake) ? ($session->handshake['secure'] ?? false) : false;
@@ -33,7 +33,10 @@ class SocketConn
 
     public function getRemoteAddress(): string
     {
-        return $this->session?->getRemoteIp() ?? $this->remoteAddress;
+        if ($this->session && is_array($this->session->handshake)) {
+            return $this->session->handshake['address'] ?? $this->remoteAddress;
+        }
+        return $this->remoteAddress;
     }
 
     public function close(): void
