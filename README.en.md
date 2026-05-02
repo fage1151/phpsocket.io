@@ -11,6 +11,7 @@ A PHP server implementation of [Socket.IO](https://socket.io), supporting WebSoc
 - **Namespaces**：Supports multiple namespaces, recommend using $io->of() method
 - **Event Acknowledgments (ACK)**：Supports bidirectional ACK acknowledgment mechanism, must use callback to respond
 - **Three-layer middleware system**：Supports global, namespace-level and Socket instance-level middlewares
+- **Connection State Recovery**：Full Socket.IO v4 connection state recovery support (private id, offset tracking, state recovery)
 - **Heartbeat detection**：Automatic heartbeat keep-alive mechanism
 - **PSR-3 Logging System**：Supports PSR-3 standard logging interface
 - **PHP 8.1+ Optimized Implementation**：Uses PHP 8.1 latest features with performance optimization
@@ -63,44 +64,76 @@ composer require workerman/redis
 │   │   ├── AdapterInterface.php  # Adapter interface
 │   │   ├── ClusterAdapter.php    # Channel-based cluster adapter
 │   │   └── RedisAdapter.php      # Redis-based cluster adapter
-│   ├── Broadcaster.php           # Unified broadcaster
-│   ├── EngineIOHandler.php       # Engine.IO protocol handler
-│   ├── EventHandler.php          # Event handler
-│   ├── HttpRequestHandler.php    # HTTP request handler
-│   ├── Logger.php                # PSR-3 compatible logger
-│   ├── MiddlewarePipeline.php    # Middleware execution pipeline
-│   ├── PacketParser.php          # Packet parser
-│   ├── PollingHandler.php        # Polling handler
-│   ├── RoomManager.php           # Room manager
-│   ├── ServerManager.php         # Server manager
-│   ├── Session.php               # Session management
+│   ├── Protocol/                 # Protocol related
+│   │   ├── PacketParser.php      # Packet parser
+│   │   └── EngineIOHandler.php   # Engine.IO protocol handler
+│   ├── Transport/                # Transport layer
+│   │   ├── HttpRequestHandler.php # HTTP request handler
+│   │   ├── PollingHandler.php    # Polling handler
+│   │   └── ConnectionManager.php # Connection manager
+│   ├── Room/                     # Room management
+│   │   └── RoomManager.php       # Room manager
+│   ├── Event/                    # Event system
+│   │   ├── EventHandler.php      # Event handler
+│   │   └── MiddlewarePipeline.php # Middleware execution pipeline
+│   ├── Support/                  # Support classes
+│   │   ├── Logger.php            # PSR-3 compatible logger
+│   │   ├── ErrorHandler.php      # Error handler
+│   │   ├── SocketConn.php        # Socket connection info class
+│   │   ├── Set.php               # Set data structure
+│   │   └── ServerManager.php     # Server manager
+│   ├── SocketIOServer.php        # Socket.IO server main class
 │   ├── Socket.php                # Socket class
 │   ├── SocketNamespace.php       # Namespace handler class
-│   └── SocketIOServer.php        # Socket.IO server main class
+│   ├── Session.php               # Session management
+│   └── Broadcaster.php           # Unified broadcaster
 ├── examples/                     # Examples directory
-│   └── simple-chat/              # Simple chat example
+│   ├── server.php                # Full server example
+│   ├── test_ack_fix.php          # ACK test
+│   └── test_logger_fix.php       # Logger test
+├── docs/                         # Documentation directory
+│   └── API.md                    # API reference
 ├── tests/                        # Tests directory
-├── server.php                    # Server startup script
-├── index.html                    # Client example
 ├── README.md                     # Project documentation (Chinese)
 ├── README.en.md                  # Project documentation (English)
 ├── USAGE.md                      # Detailed usage documentation (Chinese)
+├── composer.json                 # Composer configuration
+├── phpstan.neon                  # PHPStan configuration
+├── phpcs.xml                     # PHPCS configuration
 └── LICENSE                       # License file
 ```
 
 ## Core File Descriptions
 
+### Core Classes (Root Directory)
 - **src/SocketIOServer.php**：Socket.IO server main class, handles connections and event dispatch
 - **src/SocketNamespace.php**：Namespace handler class, accessed via $io->of()
-- **src/EventHandler.php**：Event handler, handles various Socket.IO events
-- **src/HttpRequestHandler.php**：HTTP request handler, handles HTTP polling and WebSocket handshake
-- **src/EngineIOHandler.php**：Engine.IO protocol handler, handles underlying transport protocol
-- **src/Session.php**：Session management, manages client session state
+- **src/Session.php**：Session management, manages client session state and connection recovery
 - **src/Socket.php**：Socket class, encapsulates client connection interface
-- **src/RoomManager.php**：Room manager, handles room-related operations
-- **src/PacketParser.php**：Packet parser, parses Socket.IO packets
 - **src/Broadcaster.php**：Unified broadcaster, responsible for message broadcasting
-- **src/Logger.php**：PSR-3 compatible logger
+
+### Protocol Related (Protocol/)
+- **src/Protocol/PacketParser.php**：Packet parser, parses and constructs Socket.IO packets
+- **src/Protocol/EngineIOHandler.php**：Engine.IO protocol handler, handles underlying transport protocol
+
+### Transport Layer (Transport/)
+- **src/Transport/HttpRequestHandler.php**：HTTP request handler, handles HTTP polling and WebSocket handshake
+- **src/Transport/PollingHandler.php**：Polling handler
+- **src/Transport/ConnectionManager.php**：Connection manager
+
+### Room Management (Room/)
+- **src/Room/RoomManager.php**：Room manager, handles room-related operations
+
+### Event System (Event/)
+- **src/Event/EventHandler.php**：Event handler, handles various Socket.IO events
+- **src/Event/MiddlewarePipeline.php**：Middleware execution pipeline
+
+### Support Classes (Support/)
+- **src/Support/Logger.php**：PSR-3 compatible logger
+- **src/Support/ErrorHandler.php**：Error handler
+- **src/Support/Set.php**：Set data structure, similar to JavaScript Set
+- **src/Support/SocketConn.php**：Socket connection info class
+- **src/Support/ServerManager.php**：Server manager
 
 ## Quick Start
 
@@ -462,7 +495,7 @@ php server.php stop
 
 ## More Information
 
-For detailed usage instructions, please refer to [USAGE.md](USAGE.md) file (Chinese only for now), which includes:
+For detailed usage instructions, please refer to [docs/USAGE.md](docs/USAGE.md) file (Chinese only for now), which includes:
 - Complete three-layer middleware system documentation
 - Correct usage of namespaces
 - Detailed ACK mechanism documentation
@@ -471,13 +504,22 @@ For detailed usage instructions, please refer to [USAGE.md](USAGE.md) file (Chin
 - Performance optimization suggestions
 - Security considerations
 
+## Version History
+
+- **v1.5.0**：Complete Socket.IO v4 connection state recovery mechanism, added `$socket->recovered` property, supports state recovery, room recovery, and lost message retransmission; optimized project directory structure
+- **v1.4.0**：PHP 8.1+ optimization, complete three-layer middleware system, fixed ACK mechanism, unified $io->of() usage
+- **v1.3.0**：Optimized performance and stability, added PSR-3 logging
+- **v1.2.0**：Added cluster mode support
+- **v1.1.0**：Added binary data transmission support
+- **v1.0.0**：Initial version, supports Socket.IO v4 protocol
+
 ## Contributing
 
 Issues and Pull Requests are welcome to improve this project. Before submitting code, please ensure:
 
 1. Code conforms to the project's code style (following PSR standards)
 2. Appropriate tests are added
-3. Documentation is updated (README.md, USAGE.md, etc.)
+3. Documentation is updated (README.md, docs/USAGE.md, etc.)
 4. All PHP syntax checks pass
 
 ## License

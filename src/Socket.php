@@ -7,6 +7,15 @@ namespace PhpSocketIO;
 use Psr\Log\LoggerInterface;
 use Workerman\Connection\TcpConnection;
 
+use PhpSocketIO\Protocol\PacketParser;
+use PhpSocketIO\Event\EventHandler;
+use PhpSocketIO\Room\RoomManager;
+use PhpSocketIO\Support\Set;
+use PhpSocketIO\Support\SocketConn;
+use PhpSocketIO\Broadcaster;
+use PhpSocketIO\SocketNamespace;
+use PhpSocketIO\Session;
+
 /**
  * Socket.IO Socket 类 (完整 Socket.IO v4 规范实现)
  *
@@ -609,7 +618,14 @@ class Socket
         if (!is_string($item)) {
             return false;
         }
-        return preg_match('/[^\x20-\x7E\t\r\n]/', $item) === 1;
+        
+        // 检查是否包含非 UTF-8 字符
+        if (!mb_check_encoding($item, 'UTF-8')) {
+            return true;
+        }
+        
+        // 检查是否包含真正的二进制字符（如控制字符）
+        return preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $item) === 1;
     }
 
     public function send(mixed ...$args): self

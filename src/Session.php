@@ -6,6 +6,9 @@ namespace PhpSocketIO;
 
 use Psr\Log\LoggerInterface;
 
+use PhpSocketIO\Transport\HttpRequestHandler;
+use PhpSocketIO\SocketIOServer;
+
 /**
  * Socket.IO 会话管理类 - PHP 8.1+ 深度优化版本
  *

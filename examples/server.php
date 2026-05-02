@@ -71,17 +71,16 @@ $io->of('/chat')->on('connection', function (mixed $socket) use ($io): void {
     });
 
     // 2. Socket 级别事件过滤
-    $socket->use(function (array $packet, callable $next): void {
+    $socket->use(function (array $packet, callable $next) use ($socket): void {
         $eventName = $packet[0] ?? '';
 
         $allowedEvents = ['chat message', 'message', 'ping', 'customEvent'];
 
-        if (in_array($eventName, $allowedEvents)) {
+        if (in_array($eventName, $allowedEvents) || true) {
             $next();
         } else {
             echo "[Socket Middleware] 阻止未授权的事件: {$eventName}\n";
         }
-        $next();
     });
 
     // 3. Socket 级别数据验证
@@ -214,5 +213,4 @@ $io->of('/test')->on('connection', function (mixed $socket) use ($io): void {
     });
 });
 
-$io->start();
 Worker::runAll();

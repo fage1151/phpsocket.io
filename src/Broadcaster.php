@@ -6,6 +6,13 @@ namespace PhpSocketIO;
 
 use Psr\Log\LoggerInterface;
 
+use PhpSocketIO\Protocol\PacketParser;
+use PhpSocketIO\Room\RoomManager;
+use PhpSocketIO\Support\Set;
+use PhpSocketIO\SocketNamespace;
+use PhpSocketIO\Socket;
+use PhpSocketIO\Session;
+
 /**
  * Socket.IO 广播器类 (不可变链式调用版本)
  *

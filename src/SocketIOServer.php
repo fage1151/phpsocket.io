@@ -9,6 +9,23 @@ use Workerman\Connection\TcpConnection;
 use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
 
+use PhpSocketIO\Protocol\PacketParser;
+use PhpSocketIO\Protocol\EngineIOHandler;
+use PhpSocketIO\Transport\PollingHandler;
+use PhpSocketIO\Transport\HttpRequestHandler;
+use PhpSocketIO\Transport\ConnectionManager;
+use PhpSocketIO\Event\EventHandler;
+use PhpSocketIO\Room\RoomManager;
+use PhpSocketIO\Support\ServerManager;
+use PhpSocketIO\Support\Logger;
+use PhpSocketIO\Support\ErrorHandler;
+use PhpSocketIO\Support\Set;
+use PhpSocketIO\Support\SocketConn;
+use PhpSocketIO\Broadcaster;
+use PhpSocketIO\SocketNamespace;
+use PhpSocketIO\Socket;
+use PhpSocketIO\Session;
+
 /**
  * Socket.IO v4服务器主类
  * 负责Socket.IO协议处理、事件分发和服务器管理
@@ -52,6 +69,9 @@ class SocketIOServer
 
         // 设置单例
         self::$instance = $this;
+
+        // 直接启动监听
+        $this->listen($this->listenPort, $this->listenAddress, $this->listenContext);
     }
 
     private function initializeLogger(array $options): void
@@ -112,14 +132,6 @@ class SocketIOServer
             fn(string $binaryData, mixed $connection, Session $session)
                 => $this->handleSocketIOBinaryMessage($binaryData, $connection, $session)
         );
-    }
-
-    public function start(): void
-    {
-        if ($this->listenPort === null || $this->listenAddress === null) {
-            throw new \RuntimeException('No listen address configured');
-        }
-        $this->listen($this->listenPort, $this->listenAddress, $this->listenContext);
     }
 
     private function parseListenAddress(string $listen, array $options): void
