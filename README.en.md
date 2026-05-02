@@ -76,6 +76,14 @@ composer require workerman/redis
 │   ├── Event/                    # Event system
 │   │   ├── EventHandler.php      # Event handler
 │   │   └── MiddlewarePipeline.php # Middleware execution pipeline
+│   ├── Enum/                     # Enum types
+│   │   ├── EnginePacketType.php  # Engine.IO packet type enum
+│   │   ├── SocketPacketType.php  # Socket.IO packet type enum
+│   │   └── LogLevelPriority.php  # Log level priority enum
+│   ├── Exceptions/               # Exception classes
+│   │   ├── SocketIOException.php # Socket.IO base exception
+│   │   ├── ConnectionException.php # Connection exception
+│   │   └── ProtocolException.php # Protocol exception
 │   ├── Support/                  # Support classes
 │   │   ├── Logger.php            # PSR-3 compatible logger
 │   │   ├── ErrorHandler.php      # Error handler
@@ -88,15 +96,13 @@ composer require workerman/redis
 │   ├── Session.php               # Session management
 │   └── Broadcaster.php           # Unified broadcaster
 ├── examples/                     # Examples directory
-│   ├── server.php                # Full server example
-│   ├── test_ack_fix.php          # ACK test
-│   └── test_logger_fix.php       # Logger test
+│   └── server.php                # Full server example
 ├── docs/                         # Documentation directory
-│   └── API.md                    # API reference
+│   ├── API.md                    # API reference
+│   └── USAGE.md                  # Detailed usage documentation
 ├── tests/                        # Tests directory
 ├── README.md                     # Project documentation (Chinese)
 ├── README.en.md                  # Project documentation (English)
-├── USAGE.md                      # Detailed usage documentation (Chinese)
 ├── composer.json                 # Composer configuration
 ├── phpstan.neon                  # PHPStan configuration
 ├── phpcs.xml                     # PHPCS configuration
@@ -127,6 +133,16 @@ composer require workerman/redis
 ### Event System (Event/)
 - **src/Event/EventHandler.php**：Event handler, handles various Socket.IO events
 - **src/Event/MiddlewarePipeline.php**：Middleware execution pipeline
+
+### Enum Types (Enum/)
+- **src/Enum/EnginePacketType.php**：Engine.IO packet type enum
+- **src/Enum/SocketPacketType.php**：Socket.IO packet type enum
+- **src/Enum/LogLevelPriority.php**：Log level priority enum
+
+### Exception Classes (Exceptions/)
+- **src/Exceptions/SocketIOException.php**：Socket.IO base exception
+- **src/Exceptions/ConnectionException.php**：Connection exception
+- **src/Exceptions/ProtocolException.php**：Protocol exception
 
 ### Support Classes (Support/)
 - **src/Support/Logger.php**：PSR-3 compatible logger
@@ -176,8 +192,7 @@ $io->of('/chat')->on('connection', function ($socket) use ($io) {
     });
 });
 
-// Start server
-$io->start();
+// Start Workerman
 Worker::runAll();
 ```
 

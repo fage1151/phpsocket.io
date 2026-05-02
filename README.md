@@ -78,6 +78,14 @@ composer require workerman/redis
 │   ├── Event/                    # 事件系统
 │   │   ├── EventHandler.php      # 事件处理器
 │   │   └── MiddlewarePipeline.php # 中间件执行管道
+│   ├── Enum/                     # 枚举类型
+│   │   ├── EnginePacketType.php  # Engine.IO数据包类型枚举
+│   │   ├── SocketPacketType.php  # Socket.IO数据包类型枚举
+│   │   └── LogLevelPriority.php  # 日志级别优先级枚举
+│   ├── Exceptions/               # 异常类
+│   │   ├── SocketIOException.php # Socket.IO基础异常类
+│   │   ├── ConnectionException.php # 连接异常
+│   │   └── ProtocolException.php # 协议异常
 │   ├── Support/                  # 支持类
 │   │   ├── Logger.php            # PSR-3 兼容日志器
 │   │   ├── ErrorHandler.php      # 错误处理器
@@ -90,15 +98,13 @@ composer require workerman/redis
 │   ├── Session.php               # 会话管理
 │   └── Broadcaster.php           # 统一广播器
 ├── examples/                     # 示例目录
-│   ├── server.php                # 完整服务器示例
-│   ├── test_ack_fix.php          # ACK测试
-│   └── test_logger_fix.php       # 日志测试
+│   └── server.php                # 完整服务器示例
 ├── docs/                         # 文档目录
-│   └── API.md                    # API参考文档
+│   ├── API.md                    # API参考文档
+│   └── USAGE.md                  # 详细使用文档
 ├── tests/                        # 测试目录
 ├── README.md                     # 项目说明文档（中文）
 ├── README.en.md                  # 项目说明文档（英文）
-├── USAGE.md                      # 详细使用文档（中文）
 ├── composer.json                 # Composer配置
 ├── phpstan.neon                  # PHPStan配置
 ├── phpcs.xml                     # PHPCS配置
@@ -129,6 +135,16 @@ composer require workerman/redis
 ### 事件系统（Event/）
 - **src/Event/EventHandler.php**：事件处理器，负责处理各种 Socket.IO 事件
 - **src/Event/MiddlewarePipeline.php**：中间件执行管道
+
+### 枚举类型（Enum/）
+- **src/Enum/EnginePacketType.php**：Engine.IO 数据包类型枚举
+- **src/Enum/SocketPacketType.php**：Socket.IO 数据包类型枚举
+- **src/Enum/LogLevelPriority.php**：日志级别优先级枚举
+
+### 异常类（Exceptions/）
+- **src/Exceptions/SocketIOException.php**：Socket.IO 基础异常类
+- **src/Exceptions/ConnectionException.php**：连接异常
+- **src/Exceptions/ProtocolException.php**：协议异常
 
 ### 支持类（Support/）
 - **src/Support/Logger.php**：PSR-3 兼容日志器
