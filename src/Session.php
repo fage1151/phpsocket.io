@@ -6,7 +6,7 @@ namespace PhpSocketIO;
 
 use Psr\Log\LoggerInterface;
 
-use PhpSocketIO\Transport\HttpRequestHandler;
+use PhpSocketIO\Transport\WebSocketHandler;
 use PhpSocketIO\SocketIOServer;
 
 /**
@@ -37,7 +37,6 @@ final class Session
     public ?string $remoteIp = null;
     public int $lastPong;
     public int $lastPing = 0;
-    public bool $isWs = false;
     public bool $upgraded = false;
     public bool $isPollingUpgrade = false; // 标记是否是从轮询升级来的
     public readonly int $createdAt;
@@ -193,11 +192,10 @@ final class Session
             }
 
             try {
-                $result = HttpRequestHandler::sendWsFrame($this->connection, $packet, false, self::$logger);
+                $result = WebSocketHandler::sendWsFrame($this->connection, $packet, false, self::$logger);
                 if ($this->isPollingUpgrade && !$this->upgraded) {
                     $this->upgraded = true;
                     $this->transport = 'websocket';
-                    $this->isWs = true;
                 }
                 return $result;
             } catch (\Exception $e) {
@@ -215,7 +213,7 @@ final class Session
 
     public function sendBinary(string $binaryData): void
     {
-        if ($this->isWs && $this->connection) {
+        if ($this->transport === 'websocket' && $this->connection) {
             $originalType = $this->connection->websocketType ?? "\x81";
             $this->connection->websocketType = "\x82";
 
@@ -355,7 +353,7 @@ final class Session
             'remoteIp' => $this->remoteIp,
             'createdAt' => $this->createdAt,
             'lastPong' => $this->lastPong,
-            'isWs' => $this->isWs,
+            'isWs' => $this->transport === 'websocket',
             'upgraded' => $this->upgraded,
             'messageCount' => $this->messageCount,
             'errorCount' => $this->errorCount,

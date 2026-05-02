@@ -97,7 +97,6 @@ class EngineIOHandler
             case 'UPGRADE':
                 $session->upgraded = true;
                 $session->transport = 'websocket';
-                $session->isWs = true;
 
                 $this->logger?->info('Engine.IO 协议升级完成', [
                     'sid' => $session->sid,
@@ -227,7 +226,7 @@ class EngineIOHandler
      */
     public function sendBinaryData(string $binaryData, Session $session): void
     {
-        if ($session->isWs) {
+        if ($session->transport === 'websocket') {
             $session->sendBinary($binaryData);
         } else {
             $packet = 'b' . base64_encode($binaryData);

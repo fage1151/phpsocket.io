@@ -12,7 +12,7 @@ use Psr\Log\LogLevel;
 use PhpSocketIO\Protocol\PacketParser;
 use PhpSocketIO\Protocol\EngineIOHandler;
 use PhpSocketIO\Transport\PollingHandler;
-use PhpSocketIO\Transport\HttpRequestHandler;
+use PhpSocketIO\Transport\WebSocketHandler;
 use PhpSocketIO\Transport\ConnectionManager;
 use PhpSocketIO\Event\EventHandler;
 use PhpSocketIO\Room\RoomManager;
@@ -40,7 +40,7 @@ class SocketIOServer
     private ?EventHandler $eventHandler;
     private ?EngineIOHandler $engineIoHandler;
     private ?PollingHandler $pollingHandler;
-    private ?HttpRequestHandler $httpRequestHandler;
+    private ?WebSocketHandler $webSocketHandler;
     private ErrorHandler $errorHandler;
     private array $namespaceHandlers = [];
     private ?LoggerInterface $logger = null;
@@ -87,7 +87,7 @@ class SocketIOServer
         $this->engineIoHandler = new EngineIOHandler($options);
         $this->eventHandler = new EventHandler(['server' => $this]);
         $this->pollingHandler = new PollingHandler($this->serverManager, $this->engineIoHandler);
-        $this->httpRequestHandler = new HttpRequestHandler($this->pollingHandler, $this->engineIoHandler, $this->serverManager);
+        $this->webSocketHandler = new WebSocketHandler($this->pollingHandler, $this->engineIoHandler, $this->serverManager);
     }
 
     private function normalizeCorsConfig(array $options): array
@@ -117,7 +117,7 @@ class SocketIOServer
         $this->engineIoHandler->setLogger($this->logger);
         $this->eventHandler->setLogger($this->logger);
         $this->pollingHandler->setLogger($this->logger);
-        $this->httpRequestHandler->setLogger($this->logger);
+        $this->webSocketHandler->setLogger($this->logger);
         Session::setLogger($this->logger);
         $this->engineIoHandler->setEventHandler($this->eventHandler);
         $this->engineIoHandler->setRoomManager($this->roomManager);
@@ -250,7 +250,7 @@ class SocketIOServer
             'data_type' => gettype($data)
         ]);
 
-        $this->httpRequestHandler->handleMessage($connection, $data);
+        $this->webSocketHandler->handleMessage($connection, $data);
     }
 
     private function getDataLength(mixed $data): int|string
@@ -744,9 +744,8 @@ class SocketIOServer
     {
         $session->connection = $connection;
 
-        if ($session->isWs || ($connection && is_object($connection) && ConnectionManager::isWs($connection))) {
+        if ($session->transport === 'websocket' || ($connection && is_object($connection) && ConnectionManager::isWs($connection))) {
             $session->transport = 'websocket';
-            $session->isWs = true;
         }
     }
 

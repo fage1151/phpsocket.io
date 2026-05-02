@@ -68,7 +68,7 @@ composer require workerman/redis
 │   │   ├── PacketParser.php      # Packet parser
 │   │   └── EngineIOHandler.php   # Engine.IO protocol handler
 │   ├── Transport/                # Transport layer
-│   │   ├── HttpRequestHandler.php # HTTP request handler
+│   │   ├── WebSocketHandler.php  # WebSocket handler
 │   │   ├── PollingHandler.php    # Polling handler
 │   │   └── ConnectionManager.php # Connection manager
 │   ├── Room/                     # Room management
@@ -123,7 +123,7 @@ composer require workerman/redis
 - **src/Protocol/EngineIOHandler.php**：Engine.IO protocol handler, handles underlying transport protocol
 
 ### Transport Layer (Transport/)
-- **src/Transport/HttpRequestHandler.php**：HTTP request handler, handles HTTP polling and WebSocket handshake
+- **src/Transport/WebSocketHandler.php**：WebSocket handler, handles HTTP polling and WebSocket handshake
 - **src/Transport/PollingHandler.php**：Polling handler
 - **src/Transport/ConnectionManager.php**：Connection manager
 

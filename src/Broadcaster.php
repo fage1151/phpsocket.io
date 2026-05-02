@@ -261,7 +261,7 @@ final class Broadcaster
     {
         if ($this->volatile) {
             $session = $socket->session;
-            if ($session && !$session->isWs && !empty($session->pollingQueue)) {
+            if ($session && $session->transport !== 'websocket' && !empty($session->pollingQueue)) {
                 return;
             }
         }

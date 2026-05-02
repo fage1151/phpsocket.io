@@ -70,7 +70,7 @@ composer require workerman/redis
 │   │   ├── PacketParser.php      # 数据包解析器
 │   │   └── EngineIOHandler.php   # Engine.IO协议处理器
 │   ├── Transport/                # 传输层
-│   │   ├── HttpRequestHandler.php # HTTP请求处理器
+│   │   ├── WebSocketHandler.php  # WebSocket处理器
 │   │   ├── PollingHandler.php    # 轮询处理器
 │   │   └── ConnectionManager.php # 连接管理器
 │   ├── Room/                     # 房间管理
@@ -125,7 +125,7 @@ composer require workerman/redis
 - **src/Protocol/EngineIOHandler.php**：Engine.IO 协议处理器，处理底层传输协议
 
 ### 传输层（Transport/）
-- **src/Transport/HttpRequestHandler.php**：HTTP 请求处理器，处理 HTTP 轮询和 WebSocket 握手
+- **src/Transport/WebSocketHandler.php**：WebSocket 处理器，处理 HTTP 轮询和 WebSocket 握手
 - **src/Transport/PollingHandler.php**：轮询处理器
 - **src/Transport/ConnectionManager.php**：连接管理器
 

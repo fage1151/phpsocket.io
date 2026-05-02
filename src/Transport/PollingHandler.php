@@ -10,22 +10,15 @@ use PhpSocketIO\Protocol\PacketParser;
 use PhpSocketIO\Support\ServerManager;
 use Psr\Log\LoggerInterface;
 
-final class PollingHandler
+final class PollingHandler extends AbstractTransportHandler
 {
-    private ServerManager $serverManager;
     private EngineIOHandler $engineIoHandler;
-    private ?LoggerInterface $logger = null;
     private array $waitingConnections = [];
 
     public function __construct(ServerManager $serverManager, EngineIOHandler $engineIoHandler)
     {
-        $this->serverManager = $serverManager;
+        parent::__construct($serverManager);
         $this->engineIoHandler = $engineIoHandler;
-    }
-
-    public function setLogger(LoggerInterface $logger): void
-    {
-        $this->logger = $logger;
     }
 
     public function wakeWaitingConnection(string $sid): void
@@ -98,86 +91,6 @@ final class PollingHandler
         ], $body);
     }
 
-    private function extractClientIp(\Workerman\Connection\TcpConnection $connection, mixed $req): ?string
-    {
-        if ($req && method_exists($req, 'header')) {
-            $xRealIp = $req->header('x-real-ip');
-            if ($xRealIp) {
-                return $xRealIp;
-            }
-            $xForwardedFor = $req->header('x-forwarded-for');
-            if ($xForwardedFor) {
-                $ips = explode(',', $xForwardedFor);
-                return trim($ips[0]);
-            }
-        }
-
-        if (method_exists($connection, 'getRemoteIp')) {
-            return $connection->getRemoteIp();
-        }
-
-        return null;
-    }
-
-    private function buildHandshakeData(\Workerman\Connection\TcpConnection $connection, mixed $req): array
-    {
-        $headers = [];
-        if ($req && method_exists($req, 'header')) {
-            $headerNames = [
-                'host', 'user-agent', 'accept', 'accept-language', 'accept-encoding',
-                'origin', 'referer', 'cookie', 'authorization', 'x-requested-with',
-            ];
-            foreach ($headerNames as $name) {
-                $value = $req->header($name);
-                if ($value !== null) {
-                    $headers[$name] = $value;
-                }
-            }
-        }
-
-        $query = [];
-        if ($req && method_exists($req, 'get')) {
-            $queryParams = ['transport', 'sid', 'EIO', 't'];
-            foreach ($queryParams as $param) {
-                $value = $req->get($param);
-                if ($value !== null) {
-                    $query[$param] = $value;
-                }
-            }
-        }
-
-        $origin = $headers['origin'] ?? $headers['referer'] ?? null;
-        $host = $headers['host'] ?? '';
-        $xdomain = false;
-        if ($origin && $host) {
-            $originHost = parse_url($origin, PHP_URL_HOST);
-            $xdomain = $originHost !== $host;
-        }
-
-        $secure = false;
-        if (method_exists($connection, 'getRemoteAddress')) {
-            $remoteAddress = $connection->getRemoteAddress();
-            $secure = str_starts_with($remoteAddress, 'ssl://') || str_starts_with($remoteAddress, 'https://');
-        }
-
-        $url = null;
-        if ($req && method_exists($req, 'path')) {
-            $url = $req->path();
-            if (method_exists($req, 'queryString') && $req->queryString()) {
-                $url .= '?' . $req->queryString();
-            }
-        }
-
-        return [
-            'headers' => $headers,
-            'address' => $this->extractClientIp($connection, $req),
-            'xdomain' => $xdomain,
-            'secure' => $secure,
-            'url' => $url,
-            'query' => $query,
-        ];
-    }
-
     private function handlePollingGet(\Workerman\Connection\TcpConnection $connection, string $sid): void
     {
         if (!Session::validateSidFormat($sid)) {
@@ -201,7 +114,7 @@ final class PollingHandler
 
         $messages = $session->flush();
         if (empty($messages)) {
-            if ($session->isWs) {
+            if ($session->transport === 'websocket') {
                 $this->sendHttpResponse($connection, 200, [], '6');
                 return;
             }
@@ -221,8 +134,7 @@ final class PollingHandler
                 $session = Session::get($sid);
                 if ($session) {
                     $messages = $session->flush();
-                    if (!empty($messages)) {
-                        $this->sendHttpResponse($connection, 200, [], implode("\x1e", $messages));
+                    if (!empty($messages)) {                        $this->sendHttpResponse($connection, 200, [], implode("\x1e", $messages));
                         return;
                     }
                 }
@@ -314,34 +226,10 @@ final class PollingHandler
     ): void {
         $this->cancelConnectionTimer($connection);
 
-        $defaultHeaders = [
-            'Access-Control-Allow-Origin' => '*',
-            'Access-Control-Allow-Methods' => 'GET,POST,OPTIONS',
-            'Access-Control-Allow-Headers' => 'Content-Type,Authorization',
+        $defaultHeaders = array_merge([
             'Connection' => 'close',
             'Content-Type' => 'text/plain; charset=UTF-8'
-        ];
-
-        $corsConfig = $this->serverManager->getCors();
-        if ($corsConfig !== null) {
-            $defaultHeaders['Access-Control-Allow-Origin'] = $corsConfig['origin'] ?? $defaultHeaders['Access-Control-Allow-Origin'];
-
-            if (isset($corsConfig['methods'])) {
-                $defaultHeaders['Access-Control-Allow-Methods'] = is_array($corsConfig['methods'])
-                    ? implode(',', $corsConfig['methods'])
-                    : $corsConfig['methods'];
-            }
-
-            if (isset($corsConfig['allowedHeaders'])) {
-                $defaultHeaders['Access-Control-Allow-Headers'] = is_array($corsConfig['allowedHeaders'])
-                    ? implode(',', $corsConfig['allowedHeaders'])
-                    : $corsConfig['allowedHeaders'];
-            }
-
-            if (isset($corsConfig['credentials']) && $corsConfig['credentials']) {
-                $defaultHeaders['Access-Control-Allow-Credentials'] = 'true';
-            }
-        }
+        ], $this->getCorsHeaders());
 
         $response = new \Workerman\Protocols\Http\Response(
             $code,
@@ -383,3 +271,4 @@ final class PollingHandler
         }
     }
 }
+
