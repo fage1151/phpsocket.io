@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<ruleset name="PHPSocketIO">
+    <description>PHP 8.1+ coding standard for Socket.IO server</description>
+    
+    <file>src</file>
+    <file>examples</file>
+    
+    <exclude-pattern>tests</exclude-pattern>
+    
+    <arg name="colors"/>
+    <arg value="p"/>
+    
+    <rule ref="PSR12"/>
+    
+    <config name="php_version" value="80100"/>
+</ruleset>

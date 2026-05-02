@@ -503,6 +503,11 @@ public function __construct(string $listen, array $options = [])
 | `broadcast()` | 广播事件到除了自己以外的其他连接 |
 | `disconnect($close = false)` | 断开连接 |
 | `use(callable $middleware)` | 注册 Socket 实例级中间件 |
+| `off(string $event, ?callable $callback)` | 移除事件监听器 |
+| `once(string $event, callable $callback)` | 注册一次性事件监听器 |
+| `removeAllListeners(?string $event)` | 移除所有或指定事件监听器 |
+| `listeners(string $event)` | 获取指定事件的监听器列表 |
+| `hasListeners(string $event)` | 检查是否有指定事件的监听器 |
 
 #### Socket 属性
 
@@ -511,8 +516,61 @@ public function __construct(string $listen, array $options = [])
 | `id` | string | Socket ID (Session ID) |
 | `namespace` | string | 当前命名空间 |
 | `auth` | mixed | 认证信息 |
-| `handshake` | object | 握手信息对象 |
-| `data` | array | 自定义数据存储 |
+| `handshake` | array | 握手信息对象 |
+| `data` | array | 自定义数据存储（跨 Socket 实例共享） |
+| `conn` | SocketConn | 传输层连接信息 |
+| `rooms` | Set | 当前 Socket 加入的所有房间 |
+
+#### socket.conn 对象
+
+```php
+$io->on('connection', function ($socket) {
+    // 传输层信息
+    $conn = $socket->conn;
+    
+    echo "传输方式: " . $conn->transport;        // 'websocket' 或 'polling'
+    echo "客户端地址: " . $conn->remoteAddress;   // 客户端 IP
+    echo "是否安全连接: " . ($conn->secure ? 'yes' : 'no');
+    echo "连接时间: " . $conn->createdAt;
+    
+    // 关闭底层连接
+    $conn->close();
+});
+```
+
+#### socket.rooms 属性
+
+```php
+$io->on('connection', function ($socket) {
+    // 获取当前加入的所有房间
+    $rooms = $socket->rooms;
+    
+    // 遍历房间
+    foreach ($rooms as $room) {
+        echo "房间: {$room}\n";
+    }
+    
+    // 检查是否在某个房间
+    if ($rooms->has('chat')) {
+        echo "在 chat 房间中\n";
+    }
+    
+    // 房间数量
+    echo "房间数: " . count($rooms) . "\n";
+});
+```
+
+#### socket.broadcast 属性
+
+```php
+$io->on('connection', function ($socket) {
+    // 向除自己以外的所有 Socket 广播
+    $socket->broadcast->emit('message', '有人加入了');
+    
+    // 向除自己以外的指定房间广播
+    $socket->broadcast->to('room1')->emit('message', '有人加入了 room1');
+});
+```
 
 #### handshake 对象结构
 
@@ -563,6 +621,146 @@ $io->of('/chat')->on('connection', function ($socket) {
 | `url` | string | 请求 URL |
 | `query` | array | 查询参数 |
 | `auth` | mixed | 认证信息 |
+
+## 服务器级别 API
+
+### socketsJoin / socketsLeave
+
+让所有已连接的 Socket 加入或离开指定房间：
+
+```php
+// 让所有 Socket 加入 "announcement" 房间
+$io->socketsJoin('announcement');
+
+// 让所有 Socket 离开 "announcement" 房间
+$io->socketsLeave('announcement');
+
+// 指定命名空间
+$io->socketsJoin('announcement', '/chat');
+
+// 多个房间
+$io->socketsJoin(['room1', 'room2']);
+
+// 通过命名空间对象
+$io->of('/chat')->socketsJoin('announcement');
+$io->of('/chat')->socketsLeave('announcement');
+```
+
+### fetchSockets
+
+获取命名空间内所有 Socket 实例：
+
+```php
+// 获取所有 Socket
+$sockets = $io->fetchSockets();
+
+// 指定命名空间
+$sockets = $io->fetchSockets('/chat');
+
+// 通过命名空间对象
+$sockets = $io->of('/chat')->fetchSockets();
+
+foreach ($sockets as $socket) {
+    echo "Socket ID: {$socket->id}\n";
+    echo "房间: " . implode(', ', $socket->rooms->values()) . "\n";
+    echo "自定义数据: " . json_encode($socket->data) . "\n";
+}
+```
+
+### allSockets
+
+获取命名空间内所有 Socket ID 的 Set 集合：
+
+```php
+// 获取所有 Socket ID
+$socketIds = $io->allSockets();
+
+// 指定命名空间
+$socketIds = $io->of('/chat')->allSockets();
+
+echo "在线数量: " . count($socketIds) . "\n";
+
+foreach ($socketIds as $sid) {
+    echo "在线: {$sid}\n";
+}
+```
+
+### except
+
+排除指定房间进行广播：
+
+```php
+// 排除 "room1" 房间的所有成员
+$io->except('room1')->emit('message', 'Hello');
+
+// 排除多个房间
+$io->except(['room1', 'room2'])->emit('message', 'Hello');
+
+// 通过命名空间对象
+$io->of('/chat')->except('room1')->emit('message', 'Hello');
+```
+
+### serverSideEmit
+
+在多 worker 集群环境中向其他 worker 发送事件：
+
+```php
+// 向其他 worker 发送事件
+$io->serverSideEmit('custom-event', ['data' => 'value']);
+
+// 接收其他 worker 发送的事件
+$io->on('custom-event', function ($data) {
+    echo "收到其他 worker 的事件: " . json_encode($data) . "\n";
+});
+```
+
+### disconnecting 事件
+
+Socket 断开连接前触发，可以获取断开原因：
+
+```php
+$io->on('connection', function ($socket) {
+    $socket->on('disconnecting', function ($reason) {
+        echo "Socket 即将断开，原因: {$reason}\n";
+        // 此时 Socket 仍在房间中，可以执行清理操作
+    });
+    
+    $socket->on('disconnect', function ($reason) {
+        echo "Socket 已断开，原因: {$reason}\n";
+        // 此时 Socket 已离开所有房间
+    });
+});
+```
+
+### 事件监听器管理
+
+```php
+$io->on('connection', function ($socket) {
+    // 注册一次性监听器
+    $socket->once('init', function ($data) use ($socket) {
+        echo "只触发一次: {$data}\n";
+    });
+    
+    // 移除指定事件监听器
+    $handler = function ($data) { echo $data; };
+    $socket->on('message', $handler);
+    $socket->off('message', $handler);
+    
+    // 移除指定事件的所有监听器
+    $socket->off('message');
+    
+    // 移除所有事件的所有监听器
+    $socket->removeAllListeners();
+    
+    // 检查是否有监听器
+    if ($socket->hasListeners('message')) {
+        echo "有 message 监听器\n";
+    }
+    
+    // 获取监听器列表
+    $listeners = $socket->listeners('message');
+});
+```
 
 ## 客户端示例
 

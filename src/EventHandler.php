@@ -284,6 +284,24 @@ class EventHandler
         $this->namespaceHandlers[$namespace]['events'][$event] = $callback;
     }
 
+    public function removeEventHandler(string $namespace, string $event, ?callable $callback = null): void
+    {
+        $namespace = $this->normalizeNamespace($namespace);
+
+        if (!isset($this->namespaceHandlers[$namespace]['events'][$event])) {
+            return;
+        }
+
+        if ($callback === null) {
+            unset($this->namespaceHandlers[$namespace]['events'][$event]);
+            return;
+        }
+
+        if ($this->namespaceHandlers[$namespace]['events'][$event] === $callback) {
+            unset($this->namespaceHandlers[$namespace]['events'][$event]);
+        }
+    }
+
     /**
      * 触发连接事件
      */
@@ -358,31 +376,27 @@ class EventHandler
             'reason' => $reason
         ]);
 
-        // 从命名空间移除socket
+        $this->triggerDisconnecting($socket, $reason);
+
         if (isset($this->namespaceHandlers[$namespace])) {
             unset($this->namespaceHandlers[$namespace]['sockets'][$socketId]);
         }
 
-        // 从全局连接列表移除
         unset($this->connectedSockets[$socketId]);
 
-        // 集群环境下注销会话
         $adapter = null;
 
-        // 方式1：从EventHandler本身的server实例获取适配器
         if ($this->server && method_exists($this->server, 'getServerManager')) {
             $serverManager = $this->server->getServerManager();
             $adapter = $serverManager->getAdapter();
         }
 
-        // 方式2：从Socket实例直接获取适配器（如果存在对应的Socket对象）
         if (!$adapter && isset($socket['socket']) && method_exists($socket['socket'], 'getServerManager')) {
             $socketInstance = $socket['socket'];
             $serverManager = $socketInstance->getServerManager();
             $adapter = $serverManager->getAdapter();
         }
 
-        // 执行会话注销
         if ($adapter && method_exists($adapter, 'unregister')) {
             try {
                 $adapter->unregister($socketId);
@@ -395,12 +409,22 @@ class EventHandler
             }
         }
 
-        // 调用断开连接处理器（Socket.IO v4协议标准）
         if (
             isset($this->namespaceHandlers[$namespace]['disconnect']) &&
             is_callable($this->namespaceHandlers[$namespace]['disconnect'])
         ) {
             call_user_func($this->namespaceHandlers[$namespace]['disconnect'], $socket, $reason);
+        }
+    }
+
+    public function triggerDisconnecting(array $socket, string $reason): void
+    {
+        $namespace = $socket['namespace'] ?? '/';
+        $eventName = 'disconnecting';
+
+        if (isset($this->namespaceHandlers[$namespace]['events'][$eventName])
+            && is_callable($this->namespaceHandlers[$namespace]['events'][$eventName])) {
+            call_user_func($this->namespaceHandlers[$namespace]['events'][$eventName], $socket, $reason);
         }
     }
 

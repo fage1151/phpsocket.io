@@ -883,10 +883,76 @@ class SocketIOServer
 
     public function of(string $namespace = '/'): SocketNamespace
     {
-        // 缓存命名空间实例
         if (!isset($this->namespaces[$namespace])) {
             $this->namespaces[$namespace] = new SocketNamespace($namespace, $this);
         }
         return $this->namespaces[$namespace];
+    }
+
+    public function socketsJoin(string|array $rooms, string $namespace = '/'): self
+    {
+        $sockets = $this->fetchSockets($namespace);
+        $roomList = is_array($rooms) ? $rooms : [$rooms];
+
+        foreach ($sockets as $socket) {
+            foreach ($roomList as $room) {
+                $socket->join($room);
+            }
+        }
+
+        return $this;
+    }
+
+    public function socketsLeave(string|array $rooms, string $namespace = '/'): self
+    {
+        $sockets = $this->fetchSockets($namespace);
+        $roomList = is_array($rooms) ? $rooms : [$rooms];
+
+        foreach ($sockets as $socket) {
+            foreach ($roomList as $room) {
+                $socket->leave($room);
+            }
+        }
+
+        return $this;
+    }
+
+    public function except(string|array $rooms): Broadcaster
+    {
+        $broadcaster = new Broadcaster($this);
+        return $broadcaster->except($rooms);
+    }
+
+    public function serverSideEmit(string $event, mixed ...$args): void
+    {
+        $adapter = $this->serverManager->getAdapter();
+        if ($adapter && method_exists($adapter, 'serverSideEmit')) {
+            $adapter->serverSideEmit($event, $args);
+            return;
+        }
+
+        $this->logger?->debug('serverSideEmit (single process)', [
+            'event' => $event,
+            'args_count' => count($args)
+        ]);
+    }
+
+    public function allSockets(string $namespace = '/'): Set
+    {
+        $sids = [];
+        $activeSessions = Session::all();
+
+        foreach ($activeSessions as $sid => $session) {
+            if (isset($session->namespaces[$namespace]) && $session->namespaces[$namespace]) {
+                $sids[] = $sid;
+            }
+        }
+
+        return new Set($sids);
+    }
+
+    public function getSockets(string $namespace = '/'): SocketNamespace
+    {
+        return $this->of($namespace);
     }
 }

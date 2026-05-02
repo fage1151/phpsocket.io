@@ -14,26 +14,22 @@ use Psr\Log\LoggerInterface;
  */
 class Socket
 {
-    public ?string $sid;        // Session ID
-    public string $namespace;   // 命名空间
-    public ?SocketIOServer $server; // SocketIO服务器实例
-    public ?TcpConnection $connection; // 连接对象
-    public ?Session $session;   // 会话对象
-    public mixed $auth;         // 认证信息
-    public mixed $handshake;    // 握手信息
-    public mixed $headers;      // HTTP头信息（如果有）
-    public array $data = [];    // 任意数据对象 (v4.0.0+)
+    public ?string $sid;
+    public string $namespace;
+    public ?SocketIOServer $server;
+    public ?TcpConnection $connection;
+    public ?Session $session;
+    public mixed $auth;
+    public mixed $handshake;
+    public mixed $headers;
+    public array $data = [];
+    public ?SocketConn $conn = null;
 
-    private ?Broadcaster $broadcaster = null; // 内部广播器实例
-    private ?LoggerInterface $logger = null; // 日志记录器
-    private array $middlewares = []; // Socket 实例级别的中间件
+    private ?Broadcaster $broadcaster = null;
+    private ?LoggerInterface $logger = null;
+    private array $middlewares = [];
+    private array $onceHandlers = [];
 
-
-
-
-    /**
-     * 构造函数
-     */
     public function __construct(?string $sid = null, string $namespace = '/', ?SocketIOServer $server = null, ?TcpConnection $connection = null)
     {
         $this->sid = $sid;
@@ -42,19 +38,41 @@ class Socket
         $this->connection = $connection;
         $this->session = Session::get($sid);
 
-        // 初始化日志记录器
         if ($this->server && method_exists($this->server, 'getLogger')) {
             $this->logger = $this->server->getLogger();
         }
 
-        // 从session中获取握手信息和data
         if ($this->session) {
             $this->handshake = $this->session->handshake;
-            $this->data = &$this->session->data; // 引用，保持同步
+            $this->data = &$this->session->data;
+            $this->conn = new SocketConn($this->session);
         }
 
-        // 初始化内部广播器
         $this->broadcaster = new Broadcaster($server, $namespace, $this);
+    }
+
+    public function __get(string $name): mixed
+    {
+        return match ($name) {
+            'rooms' => $this->getRooms(),
+            'broadcast' => $this->getBroadcast(),
+            'id' => $this->sid,
+            default => null,
+        };
+    }
+
+    public function getRooms(): Set
+    {
+        $rooms = [];
+        if ($this->session && $this->server) {
+            $rooms = $this->server->getRoomManager()->getSessionRooms($this->sid);
+        }
+        return new Set($rooms);
+    }
+
+    public function getBroadcast(): Broadcaster
+    {
+        return new Broadcaster($this->server, $this->namespace, $this);
     }
 
     /**
@@ -370,10 +388,109 @@ class Socket
             throw new \RuntimeException("Socket实例未关联到服务器");
         }
 
-        // 直接注册到 EventHandler，使用正确的命名空间
         $this->server->getEventHandler()->on($event, $callback, $this->namespace);
 
         return $this;
+    }
+
+    public function once(string $event, callable $callback): self
+    {
+        if (!$this->server) {
+            throw new \RuntimeException("Socket实例未关联到服务器");
+        }
+
+        $onceHandler = new class($event, $callback, $this) {
+            public string $event;
+            /** @var callable */
+            public $callback;
+            private Socket $socket;
+            /** @var callable|null */
+            public $wrappedCallback = null;
+
+            public function __construct(string $event, callable $callback, Socket $socket)
+            {
+                $this->event = $event;
+                $this->callback = $callback;
+                $this->socket = $socket;
+
+                $self = $this;
+                $this->wrappedCallback = function (mixed ...$args) use ($self) {
+                    $self->socket->off($self->event, $self->wrappedCallback);
+                    call_user_func_array($self->callback, $args);
+                };
+            }
+        };
+
+        $this->onceHandlers[$event][] = $onceHandler;
+        $this->server->getEventHandler()->on($event, $onceHandler->wrappedCallback, $this->namespace);
+
+        return $this;
+    }
+
+    public function off(string $event, ?callable $callback = null): self
+    {
+        if (!$this->server) {
+            return $this;
+        }
+
+        $eventHandler = $this->server->getEventHandler();
+
+        if ($callback === null) {
+            $eventHandler->removeEventHandler($this->namespace, $event);
+            unset($this->onceHandlers[$event]);
+        } else {
+            $eventHandler->removeEventHandler($this->namespace, $event, $callback);
+
+            foreach ($this->onceHandlers[$event] ?? [] as $i => $onceHandler) {
+                if ($onceHandler->callback === $callback || $onceHandler->wrappedCallback === $callback) {
+                    $eventHandler->removeEventHandler($this->namespace, $event, $onceHandler->wrappedCallback);
+                    unset($this->onceHandlers[$event][$i]);
+                }
+            }
+        }
+
+        return $this;
+    }
+
+    public function removeAllListeners(?string $event = null): self
+    {
+        if (!$this->server) {
+            return $this;
+        }
+
+        $eventHandler = $this->server->getEventHandler();
+
+        if ($event !== null) {
+            $eventHandler->removeEventHandler($this->namespace, $event);
+            unset($this->onceHandlers[$event]);
+        } else {
+            $allHandlers = $eventHandler->getAllEventHandlers($this->namespace);
+            foreach (array_keys($allHandlers) as $eventName) {
+                $eventHandler->removeEventHandler($this->namespace, $eventName);
+            }
+            $this->onceHandlers = [];
+        }
+
+        return $this;
+    }
+
+    public function listeners(string $event): array
+    {
+        if (!$this->server) {
+            return [];
+        }
+
+        $handler = $this->server->getEventHandler()->getEventHandler($this->namespace, $event);
+        return $handler !== null ? [$handler] : [];
+    }
+
+    public function hasListeners(string $event): bool
+    {
+        if (!$this->server) {
+            return false;
+        }
+
+        return $this->server->getEventHandler()->hasEventHandler($this->namespace, $event);
     }
 
     /**
